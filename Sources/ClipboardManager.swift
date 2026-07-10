@@ -312,12 +312,14 @@ class ClipboardManager: ObservableObject {
     func togglePin(_ item: ClipItem) {
         if let idx = items.firstIndex(where: { $0.id == item.id }) {
             items[idx].pinned.toggle()
+            items = items
             save()
         }
     }
 
     func removeItem(_ item: ClipItem) {
         items.removeAll { $0.id == item.id }
+        items = items
         save()
     }
 
