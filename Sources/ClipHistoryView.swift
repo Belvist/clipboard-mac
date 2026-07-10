@@ -23,10 +23,7 @@ struct ClipPopoverContent: View {
         if selectedProject != "All" {
             list = list.filter { $0.projectTag == selectedProject }
         }
-        let sorted = list.sorted { a, b in
-            if a.pinned != b.pinned { return a.pinned }
-            return a.timestamp > b.timestamp
-        }
+        let sorted = list.sorted { $0.timestamp > $1.timestamp }
         if searchText.isEmpty { return sorted }
         return sorted.filter {
             $0.text.localizedCaseInsensitiveContains(searchText) ||
