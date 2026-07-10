@@ -378,7 +378,7 @@ class UpdateChecker: ObservableObject {
     @Published var hasUpdate = false
     @Published var latestVersion = ""
     @Published var downloadURL = ""
-    private let currentVersion = "1.0"
+    private let currentVersion = "1.1"
 
     func checkForUpdates() {
         guard let url = URL(string: "https://api.github.com/repos/Belvist/clipboard-mac/releases/latest") else { return }
