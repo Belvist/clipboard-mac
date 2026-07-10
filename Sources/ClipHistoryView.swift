@@ -386,7 +386,7 @@ struct ClipPopoverContent: View {
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Version", "v1.1") {
+                settingsRow("Version", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3") {
                     EmptyView()
                 }
 

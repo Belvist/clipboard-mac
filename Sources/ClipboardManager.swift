@@ -377,7 +377,10 @@ class UpdateChecker: ObservableObject {
     @Published var downloadURL = ""
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0
-    private let currentVersion = "1.1"
+
+    var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+    }
 
     func checkForUpdates() {
         guard let url = URL(string: "https://api.github.com/repos/Belvist/clipboard-mac/releases/latest") else { return }
@@ -387,7 +390,7 @@ class UpdateChecker: ObservableObject {
                   let tagName = json["tag_name"] as? String else { return }
             DispatchQueue.main.async {
                 self.latestVersion = tagName.replacingOccurrences(of: "v", with: "")
-                self.hasUpdate = self.latestVersion != self.currentVersion
+                self.hasUpdate = self.latestVersion != self.currentVersion && !self.latestVersion.isEmpty && !self.currentVersion.isEmpty
                 if let assets = json["assets"] as? [[String: Any]],
                    let asset = assets.first,
                    let browserURL = asset["browser_download_url"] as? String {
@@ -409,19 +412,18 @@ class UpdateChecker: ObservableObject {
             }
 
             let tempDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("ClipHistory_\(self.latestVersion)")
+                .appendingPathComponent("ClipHistory_update_\(Int(Date().timeIntervalSince1970))")
             try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             let zipPath = tempDir.appendingPathComponent("ClipHistory.app.zip")
 
             do {
                 try data.write(to: zipPath)
 
-                // Unzip
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-                process.arguments = ["-o", zipPath.path, "-d", tempDir.path]
-                try process.run()
-                process.waitUntilExit()
+                let unzip = Process()
+                unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+                unzip.arguments = ["-o", zipPath.path, "-d", tempDir.path]
+                try unzip.run()
+                unzip.waitUntilExit()
 
                 let newAppPath = tempDir.appendingPathComponent("ClipHistory.app")
                 guard FileManager.default.fileExists(atPath: newAppPath.path) else {
@@ -429,38 +431,53 @@ class UpdateChecker: ObservableObject {
                     return
                 }
 
-                // Get current app path
                 let currentAppPath = Bundle.main.bundlePath
 
                 // Move old app to trash
                 let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first!
-                    .appendingPathComponent("ClipHistory_\(ProcessInfo.processInfo.operatingSystemVersionString)_\(Int(Date().timeIntervalSince1970)).app")
+                    .appendingPathComponent("ClipHistory_old_\(Int(Date().timeIntervalSince1970)).app")
                 try? FileManager.default.moveItem(at: URL(fileURLWithPath: currentAppPath), to: trashURL)
 
                 // Move new app into place
                 try FileManager.default.moveItem(at: newAppPath, to: URL(fileURLWithPath: currentAppPath))
 
-                // Clean up
+                // Clean up temp
                 try? FileManager.default.removeItem(at: tempDir)
 
                 DispatchQueue.main.async {
                     self.isDownloading = false
                     self.hasUpdate = false
 
-                    // Restart app
                     let alert = NSAlert()
                     alert.messageText = "Update Complete"
-                    alert.informativeText = "ClipHistory v\(self.latestVersion) installed. The app will restart."
-                    alert.addButton(withTitle: "Restart Now")
+                    alert.informativeText = "ClipHistory \(self.latestVersion) installed. Restarting..."
+                    alert.addButton(withTitle: "OK")
                     alert.runModal()
 
-                    let path = Bundle.main.bundlePath
-                    let task = Process()
-                    task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                    task.arguments = ["-a", path]
-                    try? task.run()
+                    // Write a restart script that launches the app after we quit
+                    let script = """
+                    #!/bin/bash
+                    sleep 1
+                    open "\(currentAppPath)"
+                    """
+                    let scriptPath = tempDir.appendingPathComponent("restart.sh")
+                    try? script.write(toFile: scriptPath.path, atomically: true, encoding: .utf8)
 
-                    NSApplication.shared.terminate(nil)
+                    let chmod = Process()
+                    chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+                    chmod.arguments = ["+x", scriptPath.path]
+                    try? chmod.run()
+                    chmod.waitUntilExit()
+
+                    let bash = Process()
+                    bash.executableURL = URL(fileURLWithPath: "/bin/bash")
+                    bash.arguments = [scriptPath.path]
+                    try? bash.run()
+
+                    // Terminate after short delay to let the script start
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NSApplication.shared.terminate(nil)
+                    }
                 }
             } catch {
                 DispatchQueue.main.async { self.isDownloading = false }
