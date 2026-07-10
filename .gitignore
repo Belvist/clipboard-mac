@@ -1,6 +1,6 @@
 .build/
-.build/
 *.app/
+*.app.zip
 .swiftpm/
 Package.resolved
 DerivedData/
