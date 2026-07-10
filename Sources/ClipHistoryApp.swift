@@ -80,7 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hideWindow()
         })
 
-        let hosting = NSHostingView(rootView: contentView)
+        let hosting = NSHostingView(rootView: contentView.environmentObject(L10n.shared))
 
         let panelWidth: CGFloat = 400
         let panelHeight: CGFloat = 520
@@ -175,10 +175,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showAccessibilityAlert() {
         let alert = NSAlert()
-        alert.messageText = "Accessibility Access Required"
-        alert.informativeText = "ClipHistory needs Accessibility access to paste text into other apps.\n\nGrant access in: System Settings → Privacy & Security → Accessibility"
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Later")
+        alert.messageText = L10n.shared.tr("acc_title")
+        alert.informativeText = L10n.shared.tr("acc_msg")
+        alert.addButton(withTitle: L10n.shared.tr("acc_open"))
+        alert.addButton(withTitle: L10n.shared.tr("acc_later"))
         alert.alertStyle = .warning
         if alert.runModal() == .alertFirstButtonReturn {
             requestAccessibility()

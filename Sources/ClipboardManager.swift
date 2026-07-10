@@ -376,6 +376,7 @@ class UpdateChecker: ObservableObject {
     @Published var latestVersion = ""
     @Published var downloadURL = ""
     @Published var isDownloading = false
+    @Published var isChecking = false
     @Published var downloadProgress: Double = 0
 
     var currentVersion: String {
@@ -383,11 +384,16 @@ class UpdateChecker: ObservableObject {
     }
 
     func checkForUpdates() {
+        guard !isChecking else { return }
+        isChecking = true
         guard let url = URL(string: "https://api.github.com/repos/Belvist/clipboard-mac/releases/latest") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String else { return }
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let tagName = json["tag_name"] as? String else {
+                DispatchQueue.main.async { self.isChecking = false }
+                return
+            }
             DispatchQueue.main.async {
                 self.latestVersion = tagName.replacingOccurrences(of: "v", with: "")
                 self.hasUpdate = self.latestVersion != self.currentVersion && !self.latestVersion.isEmpty && !self.currentVersion.isEmpty
@@ -396,6 +402,7 @@ class UpdateChecker: ObservableObject {
                    let browserURL = asset["browser_download_url"] as? String {
                     self.downloadURL = browserURL
                 }
+                self.isChecking = false
             }
         }.resume()
     }
@@ -484,9 +491,9 @@ class UpdateChecker: ObservableObject {
                     self.hasUpdate = false
 
                     let alert = NSAlert()
-                    alert.messageText = "Update Ready"
-                    alert.informativeText = "ClipHistory \(self.latestVersion) will install and restart now."
-                    alert.addButton(withTitle: "Restart")
+                    alert.messageText = L10n.shared.tr("update_ready")
+                    alert.informativeText = String(format: L10n.shared.tr("update_info"), self.latestVersion)
+                    alert.addButton(withTitle: L10n.shared.tr("restart"))
                     alert.runModal()
 
                     // Quit FIRST — the script swaps the app after we're gone

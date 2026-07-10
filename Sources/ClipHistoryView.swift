@@ -6,6 +6,7 @@ struct ClipPopoverContent: View {
     @StateObject private var clipboard = ClipboardManager.shared
     @StateObject private var pasteQueue = PasteQueue.shared
     @StateObject private var updater = UpdateChecker()
+    @EnvironmentObject private var lang: L10n
     @State private var searchText = ""
     @State private var copiedId: UUID?
     @State private var showQuitConfirm = false
@@ -62,7 +63,7 @@ struct ClipPopoverContent: View {
         HStack(spacing: 6) {
             Image(systemName: "doc.on.clipboard")
                 .font(.system(size: 12, weight: .semibold))
-            Text("Clipboard")
+            Text(lang.tr("clipboard"))
                 .font(.system(size: 14, weight: .bold, design: .rounded))
             Spacer()
 
@@ -104,9 +105,9 @@ struct ClipPopoverContent: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton("All Items", icon: "list.bullet", tag: 0)
-            tabButton("By Project", icon: "folder", tag: 1)
-            tabButton("Sensitive", icon: "lock.shield", tag: 2)
+            tabButton(lang.tr("tab_all"), icon: "list.bullet", tag: 0)
+            tabButton(lang.tr("tab_project"), icon: "folder", tag: 1)
+            tabButton(lang.tr("tab_sensitive"), icon: "lock.shield", tag: 2)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -132,7 +133,7 @@ struct ClipPopoverContent: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundColor(.secondary)
-            TextField("Search text, app, project...", text: $searchText)
+            TextField(lang.tr("search_ph"), text: $searchText)
                 .textFieldStyle(.plain).font(.system(size: 13, design: .rounded))
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
@@ -165,7 +166,7 @@ struct ClipPopoverContent: View {
 
     private func projectChip(_ project: String) -> some View {
         Button(action: { selectedProject = project }) {
-            Text(project)
+            Text(lang.projectLabel(project))
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -183,9 +184,9 @@ struct ClipPopoverContent: View {
                     Image(systemName: "doc.on.clipboard")
                         .font(.system(size: 28))
                         .foregroundColor(.secondary.opacity(0.3))
-                    Text("Empty").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundColor(.secondary)
-                    Text("Copy something to start").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary.opacity(0.7))
-                    Text("Cmd+Shift+V to open").font(.system(size: 10, design: .rounded)).foregroundColor(.secondary.opacity(0.5))
+                    Text(lang.tr("empty_title")).font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundColor(.secondary)
+                    Text(lang.tr("empty_copy")).font(.system(size: 11, design: .rounded)).foregroundColor(.secondary.opacity(0.7))
+                    Text(lang.tr("empty_hotkey")).font(.system(size: 10, design: .rounded)).foregroundColor(.secondary.opacity(0.5))
                     Spacer()
                 }.frame(maxWidth: .infinity)
             } else {
@@ -210,11 +211,11 @@ struct ClipPopoverContent: View {
                 HStack {
                     Button(action: { isQueueMode = false; queueSelected.removeAll() }) {
                         Image(systemName: "xmark").font(.system(size: 10))
-                        Text("Cancel").font(.system(size: 10, weight: .medium, design: .rounded))
+                        Text(lang.tr("queue_cancel")).font(.system(size: 10, weight: .medium, design: .rounded))
                     }
                     .buttonStyle(.plain).foregroundColor(.secondary)
                     Spacer()
-                    Text("\(queueSelected.count) selected")
+                    Text(String(format: lang.tr("queue_selected"), queueSelected.count))
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -226,7 +227,7 @@ struct ClipPopoverContent: View {
                         PasteQueue.shared.enqueue(items)
                     }) {
                         Image(systemName: "play.fill").font(.system(size: 10))
-                        Text("Paste All").font(.system(size: 10, weight: .bold, design: .rounded))
+                        Text(lang.tr("queue_paste_all")).font(.system(size: 10, weight: .bold, design: .rounded))
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(queueSelected.isEmpty ? .secondary : .accentColor)
@@ -244,14 +245,14 @@ struct ClipPopoverContent: View {
             Button(action: { isQueueMode.toggle(); queueSelected.removeAll() }) {
                 HStack(spacing: 4) {
                     Image(systemName: isQueueMode ? "xmark" : "list.number").font(.system(size: 10))
-                    Text(isQueueMode ? "Cancel" : "Queue").font(.system(size: 11, weight: .medium, design: .rounded))
+                    Text(isQueueMode ? lang.tr("queue_cancel") : lang.tr("queue")).font(.system(size: 11, weight: .medium, design: .rounded))
                 }.foregroundColor(isQueueMode ? .orange : .secondary)
             }.buttonStyle(.plain)
 
             Button(action: { clipboard.clearAll() }) {
                 HStack(spacing: 4) {
                     Image(systemName: "trash").font(.system(size: 10))
-                    Text("Clear").font(.system(size: 11, weight: .medium, design: .rounded))
+                    Text(lang.tr("clear")).font(.system(size: 11, weight: .medium, design: .rounded))
                 }.foregroundColor(.secondary)
             }.buttonStyle(.plain)
 
@@ -260,7 +261,7 @@ struct ClipPopoverContent: View {
             Button(action: { showQuitConfirm = true }) {
                 HStack(spacing: 4) {
                     Image(systemName: "power").font(.system(size: 10))
-                    Text("Quit").font(.system(size: 11, weight: .medium, design: .rounded))
+                    Text(lang.tr("quit")).font(.system(size: 11, weight: .medium, design: .rounded))
                 }.foregroundColor(.secondary)
             }.buttonStyle(.plain)
         }
@@ -277,7 +278,7 @@ struct ClipPopoverContent: View {
                 Spacer()
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 12))
-                    Text(pasteQueue.isActive ? "Pasting..." : "Pasted!")
+                    Text(pasteQueue.isActive ? lang.tr("pasting") : lang.tr("pasted"))
                         .font(.system(size: 12, weight: .bold, design: .rounded))
                 }
                 .foregroundColor(.white)
@@ -295,7 +296,7 @@ struct ClipPopoverContent: View {
             VStack(spacing: 14) {
                 ProgressView()
                     .scaleEffect(1.2)
-                Text("Downloading update...")
+                Text(lang.tr("downloading"))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                 Text("v\(updater.latestVersion)")
                     .font(.system(size: 11, design: .rounded))
@@ -311,15 +312,15 @@ struct ClipPopoverContent: View {
             Color.black.opacity(0.4).onTapGesture { showQuitConfirm = false }
             VStack(spacing: 14) {
                 Image(systemName: "power").font(.system(size: 24)).foregroundColor(.secondary)
-                Text("Quit ClipHistory?").font(.system(size: 14, weight: .bold, design: .rounded))
+                Text(lang.tr("quit_title")).font(.system(size: 14, weight: .bold, design: .rounded))
                 HStack(spacing: 12) {
                     Button(action: { showQuitConfirm = false }) {
-                        Text("Cancel").font(.system(size: 12, weight: .medium, design: .rounded))
+                        Text(lang.tr("cancel")).font(.system(size: 12, weight: .medium, design: .rounded))
                             .frame(width: 80).padding(.vertical, 6)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
                     }.buttonStyle(.plain)
                     Button(action: { NSApplication.shared.terminate(nil) }) {
-                        Text("Quit").font(.system(size: 12, weight: .bold, design: .rounded))
+                        Text(lang.tr("quit_btn")).font(.system(size: 12, weight: .bold, design: .rounded))
                             .frame(width: 80).padding(.vertical, 6)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.red)).foregroundColor(.white)
                     }.buttonStyle(.plain)
@@ -335,7 +336,7 @@ struct ClipPopoverContent: View {
             VStack(spacing: 0) {
                 HStack {
                     Image(systemName: "gearshape").font(.system(size: 12))
-                    Text("Settings").font(.system(size: 14, weight: .bold, design: .rounded))
+                    Text(lang.tr("settings")).font(.system(size: 14, weight: .bold, design: .rounded))
                     Spacer()
                     Button(action: { showSettings = false }) {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundColor(.secondary)
@@ -343,7 +344,7 @@ struct ClipPopoverContent: View {
                 }.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Launch at login", "Start when you log in") {
+                settingsRow(lang.tr("launch_login"), lang.tr("launch_login_sub")) {
                     Toggle("", isOn: Binding(
                         get: { SMAppService.mainApp.status == .enabled },
                         set: { val in try? val ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }
@@ -352,11 +353,12 @@ struct ClipPopoverContent: View {
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Auto-paste (Accessibility)", checkAccessibility() ? "Enabled" : "Needed") {
+                settingsRow(lang.tr("autopaste"), checkAccessibility() ? lang.tr("enabled") : lang.tr("needed"),
+                            color: checkAccessibility() ? .green : .orange) {
                     if checkAccessibility() {
                         Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.system(size: 14))
                     } else {
-                        Button("Enable") { requestAccessibility() }
+                        Button(lang.tr("enable")) { requestAccessibility() }
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor)).foregroundColor(.white)
@@ -366,9 +368,14 @@ struct ClipPopoverContent: View {
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Updates", updater.hasUpdate ? "v\(updater.latestVersion) available" : "Up to date") {
-                    if updater.hasUpdate {
-                        Button("Update") { updater.downloadAndUpdate() }
+                settingsRow(lang.tr("updates"),
+                            updater.isChecking ? lang.tr("checking") :
+                            (updater.hasUpdate ? String(format: lang.tr("available"), updater.latestVersion) : lang.tr("up_to_date")),
+                            color: updater.isChecking ? .secondary : (updater.hasUpdate ? .orange : .green)) {
+                    if updater.isChecking {
+                        ProgressView().controlSize(.small)
+                    } else if updater.hasUpdate {
+                        Button(lang.tr("update_btn")) { updater.downloadAndUpdate() }
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange)).foregroundColor(.white)
@@ -380,13 +387,41 @@ struct ClipPopoverContent: View {
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Privacy", "100% local, no data sent") {
+                settingsRow(lang.tr("check_updates"), "") {
+                    Button(lang.tr("check_updates")) { updater.checkForUpdates() }
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.15)))
+                    .foregroundColor(.accentColor)
+                    .buttonStyle(.plain)
+                    .disabled(updater.isChecking)
+                }
+
+                Divider().padding(.horizontal, 16)
+
+                settingsRow(lang.tr("privacy"), lang.tr("privacy_sub"), color: .green) {
                     Image(systemName: "lock.shield").foregroundColor(.green).font(.system(size: 14))
                 }
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Version", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3") {
+                settingsRow(lang.tr("language"), "") {
+                    Picker("", selection: Binding(
+                        get: { lang.language },
+                        set: { lang.set($0) }
+                    )) {
+                        ForEach(AppLanguage.allCases, id: \.self) { l in
+                            Text(l.label).tag(l)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 140)
+                }
+
+                Divider().padding(.horizontal, 16)
+
+                settingsRow(lang.tr("version"), Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4") {
                     EmptyView()
                 }
 
@@ -397,14 +432,14 @@ struct ClipPopoverContent: View {
         }.transition(.opacity)
     }
 
-    private func settingsRow<V: View>(_ title: String, _ subtitle: String, @ViewBuilder value: () -> V) -> some View {
+    private func settingsRow<V: View>(_ title: String, _ subtitle: String,
+                                color: Color = .secondary,
+                                @ViewBuilder value: () -> V) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 12, weight: .medium, design: .rounded))
                 Text(subtitle).font(.system(size: 10, design: .rounded))
-                    .foregroundColor(title == "Privacy" ? .green :
-                        title == "Auto-paste (Accessibility)" ? (checkAccessibility() ? .green : .orange) :
-                        title == "Updates" ? (updater.hasUpdate ? .orange : .green) : .secondary)
+                    .foregroundColor(color)
             }
             Spacer()
             value()
@@ -422,6 +457,7 @@ struct ClipItemRow: View {
     var isQueueMode: Bool
     @Binding var queueSelected: Set<UUID>
     var onSelect: (ClipItem) -> Void = { _ in }
+    @EnvironmentObject private var lang: L10n
     @State private var isHovered = false
 
     var isSelected: Bool { queueSelected.contains(item.id) }
@@ -517,14 +553,14 @@ struct ClipItemRow: View {
                             if item.projectTag != "Other" {
                                 HStack(spacing: 3) {
                                     Image(systemName: "folder.fill").font(.system(size: 7))
-                                    Text(item.projectTag).font(.system(size: 8, design: .rounded))
+                                    Text(lang.projectLabel(item.projectTag)).font(.system(size: 8, design: .rounded))
                                 }
                                 .foregroundColor(.accentColor.opacity(0.7))
                             }
 
                             HStack(spacing: 3) {
                                 Image(systemName: typeIcon).font(.system(size: 7))
-                                Text(item.contentType.rawValue).font(.system(size: 8, design: .rounded))
+                                Text(lang.contentTypeLabel(item.contentType)).font(.system(size: 8, design: .rounded))
                             }
                             .foregroundColor(.secondary.opacity(0.6))
                         }
