@@ -119,6 +119,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         p.minSize = NSSize(width: panelWidth, height: panelHeight)
         p.maxSize = NSSize(width: panelWidth, height: panelHeight)
 
+        // Hide traffic light buttons
+        p.standardWindowButton(.closeButton)?.isHidden = true
+        p.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        p.standardWindowButton(.zoomButton)?.isHidden = true
+
         panel = p
         p.orderFrontRegardless()
     }
