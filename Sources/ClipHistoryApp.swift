@@ -57,12 +57,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.main?.visibleFrame ?? .zero
 
-        let contentView = ClipPopoverContent(onSelect: { [weak self] text in
+        let contentView = ClipPopoverContent(onSelect: { [weak self] item in
             self?.hideWindow()
             if let app = self?.previouslyActiveApp {
                 app.activate(options: .activateIgnoringOtherApps)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    ClipboardManager.shared.copyToClipboard(text)
+                    ClipboardManager.shared.copyToClipboard(item)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         let src = CGEventSource(stateID: .hidSystemState)
                         let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
@@ -76,7 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             } else {
-                ClipboardManager.shared.copyToClipboard(text)
+                ClipboardManager.shared.copyToClipboard(item)
             }
         }, onDismiss: { [weak self] in
             self?.hideWindow()

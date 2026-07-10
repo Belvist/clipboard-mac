@@ -15,8 +15,10 @@ struct ClipItem: Identifiable, Codable, Equatable {
     var contentType: ContentType
     var isSensitive: Bool
     var projectTag: String
+    var imageData: Data?
 
-    init(text: String, pinned: Bool = false, sourceApp: String = "", sourceBundle: String = "", contentType: ContentType = .text, isSensitive: Bool = false, projectTag: String = "") {
+    init(text: String, pinned: Bool = false, sourceApp: String = "", sourceBundle: String = "",
+         contentType: ContentType = .text, isSensitive: Bool = false, projectTag: String = "", imageData: Data? = nil) {
         self.id = UUID()
         self.text = text
         self.timestamp = Date()
@@ -26,6 +28,7 @@ struct ClipItem: Identifiable, Codable, Equatable {
         self.contentType = contentType
         self.isSensitive = isSensitive
         self.projectTag = projectTag
+        self.imageData = imageData
     }
 
     var timeAgo: String {
@@ -36,11 +39,16 @@ struct ClipItem: Identifiable, Codable, Equatable {
         return "\(seconds / 86400)d"
     }
 
+    var nsImage: NSImage? {
+        guard let data = imageData else { return nil }
+        return NSImage(data: data)
+    }
+
     static func == (lhs: ClipItem, rhs: ClipItem) -> Bool { lhs.id == rhs.id }
 }
 
 enum ContentType: String, Codable {
-    case text, code, password, email, url, phone, creditCard, table, json
+    case text, code, password, email, url, phone, creditCard, table, json, image
 }
 
 // MARK: - Sensitive Data Detector
@@ -48,7 +56,6 @@ enum ContentType: String, Codable {
 struct SensitiveDetector {
     static func detect(_ text: String) -> (isSensitive: Bool, type: ContentType) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
         if isPassword(trimmed) { return (true, .password) }
         if isCreditCard(trimmed) { return (true, .creditCard) }
         if isEmail(trimmed) { return (false, .email) }
@@ -57,7 +64,6 @@ struct SensitiveDetector {
         if isCode(trimmed) { return (false, .code) }
         if isJSON(trimmed) { return (false, .json) }
         if isTable(trimmed) { return (false, .table) }
-
         return (false, .text)
     }
 
@@ -131,12 +137,9 @@ struct ProjectDetector {
 
 class PasteQueue: ObservableObject {
     static let shared = PasteQueue()
-
     @Published var items: [ClipItem] = []
     @Published var isActive = false
     @Published var currentIndex = 0
-
-    private var timer: Timer?
 
     func enqueue(_ items: [ClipItem]) {
         self.items = items
@@ -146,14 +149,15 @@ class PasteQueue: ObservableObject {
     }
 
     func pasteNext() {
-        guard currentIndex < items.count else {
-            stop()
-            return
-        }
-
+        guard currentIndex < items.count else { stop(); return }
         let item = items[currentIndex]
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(item.text, forType: .string)
+
+        if let img = item.nsImage {
+            NSPasteboard.general.writeObjects([img])
+        } else {
+            NSPasteboard.general.setString(item.text, forType: .string)
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             let src = CGEventSource(stateID: .hidSystemState)
@@ -164,15 +168,10 @@ class PasteQueue: ObservableObject {
                 let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
                 keyUp?.flags = .maskCommand
                 keyUp?.post(tap: .cghidEventTap)
-
                 self.currentIndex += 1
                 if self.currentIndex < self.items.count {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.pasteNext()
-                    }
-                } else {
-                    self.stop()
-                }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.pasteNext() }
+                } else { self.stop() }
             }
         }
     }
@@ -188,12 +187,12 @@ class PasteQueue: ObservableObject {
 
 class ClipboardManager: ObservableObject {
     static let shared = ClipboardManager()
-
     @Published var items: [ClipItem] = []
     @Published var currentContent: String = ""
 
     private var timer: Timer?
     private var lastContent: String = ""
+    private var lastImageHash: Int = 0
     let maxItems = 50
 
     private let storageURL: URL = {
@@ -219,41 +218,83 @@ class ClipboardManager: ObservableObject {
     }
 
     private func checkClipboard() {
-        guard let content = NSPasteboard.general.string(forType: .string),
-              !content.isEmpty,
-              content != lastContent else { return }
+        let pb = NSPasteboard.general
 
-        lastContent = content
-        currentContent = content
+        // Check for images first
+        if let image_data = pb.data(forType: .tiff),
+           let image = NSImage(data: image_data),
+           let tiffRep = image.tiffRepresentation {
+            let hash = tiffRep.hashValue
+            if hash != lastImageHash {
+                lastImageHash = hash
+                lastContent = ""
+                let frontApp = NSWorkspace.shared.frontmostApplication
+                let appName = frontApp?.localizedName ?? "Unknown"
+                let bundleID = frontApp?.bundleIdentifier ?? ""
+                let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
 
-        let frontApp = NSWorkspace.shared.frontmostApplication
-        let appName = frontApp?.localizedName ?? "Unknown"
-        let bundleID = frontApp?.bundleIdentifier ?? ""
-        let detection = SensitiveDetector.detect(content)
-        let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
+                // Compress PNG
+                let pngData: Data?
+                if let tiff = image.tiffRepresentation,
+                   let rep = NSBitmapImageRep(data: tiff),
+                   let png = rep.representation(using: .png, properties: [:]) {
+                    pngData = png
+                } else {
+                    pngData = image_data
+                }
 
-        DispatchQueue.main.async {
-            let item = ClipItem(
-                text: content,
-                sourceApp: appName,
-                sourceBundle: bundleID,
-                contentType: detection.type,
-                isSensitive: detection.isSensitive,
-                projectTag: project
-            )
-            self.items.insert(item, at: 0)
-            if self.items.count > self.maxItems {
-                self.items = Array(self.items.prefix(self.maxItems))
+                DispatchQueue.main.async {
+                    let item = ClipItem(
+                        text: "[Image \(Int(image.size.width))x\(Int(image.size.height))]",
+                        sourceApp: appName, sourceBundle: bundleID,
+                        contentType: .image, projectTag: project, imageData: pngData
+                    )
+                    self.items.insert(item, at: 0)
+                    if self.items.count > self.maxItems {
+                        self.items = Array(self.items.prefix(self.maxItems))
+                    }
+                    self.save()
+                }
             }
-            self.save()
+        }
+
+        // Check for text
+        if let content = pb.string(forType: .string),
+           !content.isEmpty,
+           content != lastContent {
+            lastContent = content
+            currentContent = content
+
+            let frontApp = NSWorkspace.shared.frontmostApplication
+            let appName = frontApp?.localizedName ?? "Unknown"
+            let bundleID = frontApp?.bundleIdentifier ?? ""
+            let detection = SensitiveDetector.detect(content)
+            let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
+
+            DispatchQueue.main.async {
+                let item = ClipItem(
+                    text: content, sourceApp: appName, sourceBundle: bundleID,
+                    contentType: detection.type, isSensitive: detection.isSensitive, projectTag: project
+                )
+                self.items.insert(item, at: 0)
+                if self.items.count > self.maxItems {
+                    self.items = Array(self.items.prefix(self.maxItems))
+                }
+                self.save()
+            }
         }
     }
 
-    func copyToClipboard(_ text: String) {
+    func copyToClipboard(_ item: ClipItem) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        lastContent = text
-        currentContent = text
+        if let img = item.nsImage {
+            NSPasteboard.general.writeObjects([img])
+            lastImageHash = item.imageData?.hashValue ?? 0
+        } else {
+            NSPasteboard.general.setString(item.text, forType: .string)
+            lastContent = item.text
+        }
+        currentContent = item.text
     }
 
     func togglePin(_ item: ClipItem) {
@@ -337,23 +378,17 @@ class UpdateChecker: ObservableObject {
     @Published var hasUpdate = false
     @Published var latestVersion = ""
     @Published var downloadURL = ""
-
-    private let repoOwner = "earflow"
-    private let repoName = "barkill"
     private let currentVersion = "1.0"
 
     func checkForUpdates() {
-        guard let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest") else { return }
-
+        guard let url = URL(string: "https://api.github.com/repos/Belvist/clipboard-mac/releases/latest") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tagName = json["tag_name"] as? String else { return }
-
             DispatchQueue.main.async {
                 self.latestVersion = tagName.replacingOccurrences(of: "v", with: "")
                 self.hasUpdate = self.latestVersion != self.currentVersion
-
                 if let assets = json["assets"] as? [[String: Any]],
                    let asset = assets.first,
                    let browserURL = asset["browser_download_url"] as? String {
@@ -364,7 +399,7 @@ class UpdateChecker: ObservableObject {
     }
 
     func openDownloadPage() {
-        if let url = URL(string: "https://github.com/\(repoOwner)/\(repoName)/releases/latest") {
+        if let url = URL(string: "https://github.com/Belvist/clipboard-mac/releases/latest") {
             NSWorkspace.shared.open(url)
         }
     }

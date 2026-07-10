@@ -14,7 +14,7 @@ struct ClipPopoverContent: View {
     @State private var selectedTab = 0
     @State private var queueSelected: Set<UUID> = []
     @State private var isQueueMode = false
-    var onSelect: (String) -> Void = { _ in }
+    var onSelect: (ClipItem) -> Void = { _ in }
     var onDismiss: () -> Void = {}
 
     var filteredItems: [ClipItem] {
@@ -420,7 +420,7 @@ struct ClipItemRow: View {
     @Binding var copiedId: UUID?
     var isQueueMode: Bool
     @Binding var queueSelected: Set<UUID>
-    var onSelect: (String) -> Void = { _ in }
+    var onSelect: (ClipItem) -> Void = { _ in }
     @State private var isHovered = false
 
     var isSelected: Bool { queueSelected.contains(item.id) }
@@ -436,6 +436,7 @@ struct ClipItemRow: View {
         case .json: return "curlybraces"
         case .table: return "tablecells"
         case .text: return "doc.text"
+        case .image: return "photo"
         }
     }
 
@@ -445,7 +446,7 @@ struct ClipItemRow: View {
                 if isSelected { queueSelected.remove(item.id) }
                 else { queueSelected.insert(item.id) }
             } else {
-                onSelect(item.text)
+                onSelect(item)
                 copiedId = item.id
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                     if copiedId == item.id { copiedId = nil }
@@ -460,46 +461,72 @@ struct ClipItemRow: View {
                         .frame(width: 20)
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
-                        if item.pinned {
-                            Image(systemName: "pin.fill").font(.system(size: 7, weight: .bold)).foregroundColor(.orange)
+                if item.contentType == .image, let img = item.nsImage {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 5) {
+                            if item.pinned {
+                                Image(systemName: "pin.fill").font(.system(size: 7, weight: .bold)).foregroundColor(.orange)
+                            }
+                            Image(systemName: "photo").font(.system(size: 7, weight: .bold)).foregroundColor(.blue)
+                            Text(item.timeAgo)
+                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
                         }
-                        if item.isSensitive {
-                            Image(systemName: typeIcon).font(.system(size: 7, weight: .bold)).foregroundColor(.red)
-                        }
-                        Text(item.timeAgo)
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                    Text(item.text)
-                        .font(.system(size: 11, design: item.contentType == .code ? .monospaced : .rounded))
-                        .foregroundColor(item.isSensitive ? .red.opacity(0.9) : .primary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 6) {
+                        Image(nsImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 60)
+                            .cornerRadius(6)
+                            .clipped()
                         HStack(spacing: 3) {
-                            Image(systemName: item.sourceApp.isEmpty ? "questionmark.circle" : "app.fill")
-                                .font(.system(size: 7))
+                            Image(systemName: "app.fill").font(.system(size: 7))
                             Text(item.sourceApp.isEmpty ? "Unknown" : item.sourceApp)
                                 .font(.system(size: 8, design: .rounded))
                         }
                         .foregroundColor(.secondary.opacity(0.6))
-
-                        if item.projectTag != "Other" {
-                            HStack(spacing: 3) {
-                                Image(systemName: "folder.fill").font(.system(size: 7))
-                                Text(item.projectTag).font(.system(size: 8, design: .rounded))
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 5) {
+                            if item.pinned {
+                                Image(systemName: "pin.fill").font(.system(size: 7, weight: .bold)).foregroundColor(.orange)
                             }
-                            .foregroundColor(.accentColor.opacity(0.7))
+                            if item.isSensitive {
+                                Image(systemName: typeIcon).font(.system(size: 7, weight: .bold)).foregroundColor(.red)
+                            }
+                            Text(item.timeAgo)
+                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
                         }
+                        Text(item.text)
+                            .font(.system(size: 11, design: item.contentType == .code ? .monospaced : .rounded))
+                            .foregroundColor(item.isSensitive ? .red.opacity(0.9) : .primary)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 6) {
+                            HStack(spacing: 3) {
+                                Image(systemName: item.sourceApp.isEmpty ? "questionmark.circle" : "app.fill")
+                                    .font(.system(size: 7))
+                                Text(item.sourceApp.isEmpty ? "Unknown" : item.sourceApp)
+                                    .font(.system(size: 8, design: .rounded))
+                            }
+                            .foregroundColor(.secondary.opacity(0.6))
 
-                        HStack(spacing: 3) {
-                            Image(systemName: typeIcon).font(.system(size: 7))
-                            Text(item.contentType.rawValue).font(.system(size: 8, design: .rounded))
+                            if item.projectTag != "Other" {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "folder.fill").font(.system(size: 7))
+                                    Text(item.projectTag).font(.system(size: 8, design: .rounded))
+                                }
+                                .foregroundColor(.accentColor.opacity(0.7))
+                            }
+
+                            HStack(spacing: 3) {
+                                Image(systemName: typeIcon).font(.system(size: 7))
+                                Text(item.contentType.rawValue).font(.system(size: 8, design: .rounded))
+                            }
+                            .foregroundColor(.secondary.opacity(0.6))
                         }
-                        .foregroundColor(.secondary.opacity(0.6))
                     }
                 }
 
