@@ -51,13 +51,12 @@ struct ClipPopoverContent: View {
             if copiedId != nil { copiedToast }
             if showQuitConfirm { quitConfirm }
             if showSettings { settingsOverlay }
+            if updater.isDownloading { downloadOverlay }
         }
         .onAppear {
             updater.checkForUpdates()
         }
     }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 6) {
@@ -68,7 +67,7 @@ struct ClipPopoverContent: View {
             Spacer()
 
             if updater.hasUpdate {
-                Button(action: { updater.openDownloadPage() }) {
+                Button(action: { updater.downloadAndUpdate() }) {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.down.circle")
                             .font(.system(size: 9))
@@ -103,8 +102,6 @@ struct ClipPopoverContent: View {
         .padding(.bottom, 8)
     }
 
-    // MARK: - Tabs
-
     private var tabBar: some View {
         HStack(spacing: 0) {
             tabButton("All Items", icon: "list.bullet", tag: 0)
@@ -132,8 +129,6 @@ struct ClipPopoverContent: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Search
-
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundColor(.secondary)
@@ -150,8 +145,6 @@ struct ClipPopoverContent: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
     }
-
-    // MARK: - Project filter
 
     private var projectFilter: some View {
         Group {
@@ -176,16 +169,11 @@ struct ClipPopoverContent: View {
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(selectedProject == project ? Color.accentColor : Color.primary.opacity(0.08))
-                )
+                .background(Capsule().fill(selectedProject == project ? Color.accentColor : Color.primary.opacity(0.08)))
                 .foregroundColor(selectedProject == project ? .white : .primary)
         }
         .buttonStyle(.plain)
     }
-
-    // MARK: - Items
 
     private var itemsList: some View {
         Group {
@@ -216,29 +204,20 @@ struct ClipPopoverContent: View {
         }
     }
 
-    // MARK: - Queue bar
-
     private var queueBar: some View {
         Group {
             if isQueueMode {
                 HStack {
-                    Button(action: {
-                        isQueueMode = false
-                        queueSelected.removeAll()
-                    }) {
+                    Button(action: { isQueueMode = false; queueSelected.removeAll() }) {
                         Image(systemName: "xmark").font(.system(size: 10))
                         Text("Cancel").font(.system(size: 10, weight: .medium, design: .rounded))
                     }
                     .buttonStyle(.plain).foregroundColor(.secondary)
-
                     Spacer()
-
                     Text("\(queueSelected.count) selected")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundColor(.secondary)
-
                     Spacer()
-
                     Button(action: {
                         let items = filteredItems.filter { queueSelected.contains($0.id) }
                         isQueueMode = false
@@ -260,19 +239,12 @@ struct ClipPopoverContent: View {
         }
     }
 
-    // MARK: - Footer
-
     private var footer: some View {
         HStack(spacing: 12) {
-            Button(action: {
-                isQueueMode.toggle()
-                queueSelected.removeAll()
-            }) {
+            Button(action: { isQueueMode.toggle(); queueSelected.removeAll() }) {
                 HStack(spacing: 4) {
-                    Image(systemName: isQueueMode ? "xmark" : "list.number")
-                        .font(.system(size: 10))
-                    Text(isQueueMode ? "Cancel" : "Queue")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                    Image(systemName: isQueueMode ? "xmark" : "list.number").font(.system(size: 10))
+                    Text(isQueueMode ? "Cancel" : "Queue").font(.system(size: 11, weight: .medium, design: .rounded))
                 }.foregroundColor(isQueueMode ? .orange : .secondary)
             }.buttonStyle(.plain)
 
@@ -296,7 +268,7 @@ struct ClipPopoverContent: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - Toasts & Overlays
+    // MARK: - Overlays
 
     private var copiedToast: some View {
         VStack {
@@ -315,6 +287,23 @@ struct ClipPopoverContent: View {
             }.padding(.bottom, 40)
         }
         .allowsHitTesting(false).transition(.opacity).animation(.easeOut(duration: 0.2), value: copiedId)
+    }
+
+    private var downloadOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+            VStack(spacing: 14) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                Text("Downloading update...")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Text("v\(updater.latestVersion)")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.secondary)
+            }
+            .padding(30)
+            .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
+        }
     }
 
     private var quitConfirm: some View {
@@ -363,15 +352,11 @@ struct ClipPopoverContent: View {
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Auto-paste (Accessibility)", isAccessibilityEnabled() ? "Enabled" : "Needed") {
-                    if isAccessibilityEnabled() {
+                settingsRow("Auto-paste (Accessibility)", checkAccessibility() ? "Enabled" : "Needed") {
+                    if checkAccessibility() {
                         Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.system(size: 14))
                     } else {
-                        Button("Enable") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
+                        Button("Enable") { requestAccessibility() }
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor)).foregroundColor(.white)
@@ -381,19 +366,33 @@ struct ClipPopoverContent: View {
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Privacy", "All data stays on your Mac") {
+                settingsRow("Updates", updater.hasUpdate ? "v\(updater.latestVersion) available" : "Up to date") {
+                    if updater.hasUpdate {
+                        Button("Update") { updater.downloadAndUpdate() }
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange)).foregroundColor(.white)
+                        .buttonStyle(.plain)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.system(size: 14))
+                    }
+                }
+
+                Divider().padding(.horizontal, 16)
+
+                settingsRow("Privacy", "100% local, no data sent") {
                     Image(systemName: "lock.shield").foregroundColor(.green).font(.system(size: 14))
                 }
 
                 Divider().padding(.horizontal, 16)
 
-                settingsRow("Version", "v1.0") {
+                settingsRow("Version", "v1.1") {
                     EmptyView()
                 }
 
                 Spacer()
             }
-            .frame(width: 320, height: 260)
+            .frame(width: 320, height: 300)
             .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
         }.transition(.opacity)
     }
@@ -403,7 +402,9 @@ struct ClipPopoverContent: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 12, weight: .medium, design: .rounded))
                 Text(subtitle).font(.system(size: 10, design: .rounded))
-                    .foregroundColor(title == "Privacy" ? .green : title == "Auto-paste (Accessibility)" ? (isAccessibilityEnabled() ? .green : .orange) : .secondary)
+                    .foregroundColor(title == "Privacy" ? .green :
+                        title == "Auto-paste (Accessibility)" ? (checkAccessibility() ? .green : .orange) :
+                        title == "Updates" ? (updater.hasUpdate ? .orange : .green) : .secondary)
             }
             Spacer()
             value()

@@ -220,7 +220,6 @@ class ClipboardManager: ObservableObject {
     private func checkClipboard() {
         let pb = NSPasteboard.general
 
-        // Check for images first
         if let image_data = pb.data(forType: .tiff),
            let image = NSImage(data: image_data),
            let tiffRep = image.tiffRepresentation {
@@ -233,7 +232,6 @@ class ClipboardManager: ObservableObject {
                 let bundleID = frontApp?.bundleIdentifier ?? ""
                 let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
 
-                // Compress PNG
                 let pngData: Data?
                 if let tiff = image.tiffRepresentation,
                    let rep = NSBitmapImageRep(data: tiff),
@@ -258,7 +256,6 @@ class ClipboardManager: ObservableObject {
             }
         }
 
-        // Check for text
         if let content = pb.string(forType: .string),
            !content.isEmpty,
            content != lastContent {
@@ -314,10 +311,6 @@ class ClipboardManager: ObservableObject {
         save()
     }
 
-    func items(for project: String) -> [ClipItem] {
-        items.filter { $0.projectTag == project }
-    }
-
     var projects: [String] {
         Array(Set(items.map { $0.projectTag })).sorted()
     }
@@ -339,9 +332,13 @@ class ClipboardManager: ObservableObject {
 
 // MARK: - Accessibility
 
-func isAccessibilityEnabled() -> Bool {
+func checkAccessibility() -> Bool {
+    AXIsProcessTrusted()
+}
+
+func requestAccessibility() {
     let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-    return AXIsProcessTrustedWithOptions(options)
+    AXIsProcessTrustedWithOptions(options)
 }
 
 // MARK: - Hotkey
@@ -372,12 +369,14 @@ class HotKeyManager {
     }
 }
 
-// MARK: - Auto Update
+// MARK: - Auto Update (real download + install)
 
 class UpdateChecker: ObservableObject {
     @Published var hasUpdate = false
     @Published var latestVersion = ""
     @Published var downloadURL = ""
+    @Published var isDownloading = false
+    @Published var downloadProgress: Double = 0
     private let currentVersion = "1.1"
 
     func checkForUpdates() {
@@ -398,10 +397,76 @@ class UpdateChecker: ObservableObject {
         }.resume()
     }
 
-    func openDownloadPage() {
-        if let url = URL(string: "https://github.com/Belvist/clipboard-mac/releases/latest") {
-            NSWorkspace.shared.open(url)
+    func downloadAndUpdate() {
+        guard let url = URL(string: downloadURL) else { return }
+        isDownloading = true
+        downloadProgress = 0
+
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self = self, let data = data, error == nil else {
+                DispatchQueue.main.async { self?.isDownloading = false }
+                return
+            }
+
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ClipHistory_\(self.latestVersion)")
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let zipPath = tempDir.appendingPathComponent("ClipHistory.app.zip")
+
+            do {
+                try data.write(to: zipPath)
+
+                // Unzip
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+                process.arguments = ["-o", zipPath.path, "-d", tempDir.path]
+                try process.run()
+                process.waitUntilExit()
+
+                let newAppPath = tempDir.appendingPathComponent("ClipHistory.app")
+                guard FileManager.default.fileExists(atPath: newAppPath.path) else {
+                    DispatchQueue.main.async { self.isDownloading = false }
+                    return
+                }
+
+                // Get current app path
+                let currentAppPath = Bundle.main.bundlePath
+
+                // Move old app to trash
+                let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first!
+                    .appendingPathComponent("ClipHistory_\(ProcessInfo.processInfo.operatingSystemVersionString)_\(Int(Date().timeIntervalSince1970)).app")
+                try? FileManager.default.moveItem(at: URL(fileURLWithPath: currentAppPath), to: trashURL)
+
+                // Move new app into place
+                try FileManager.default.moveItem(at: newAppPath, to: URL(fileURLWithPath: currentAppPath))
+
+                // Clean up
+                try? FileManager.default.removeItem(at: tempDir)
+
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.hasUpdate = false
+
+                    // Restart app
+                    let alert = NSAlert()
+                    alert.messageText = "Update Complete"
+                    alert.informativeText = "ClipHistory v\(self.latestVersion) installed. The app will restart."
+                    alert.addButton(withTitle: "Restart Now")
+                    alert.runModal()
+
+                    let path = Bundle.main.bundlePath
+                    let task = Process()
+                    task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                    task.arguments = ["-a", path]
+                    try? task.run()
+
+                    NSApplication.shared.terminate(nil)
+                }
+            } catch {
+                DispatchQueue.main.async { self.isDownloading = false }
+            }
         }
+        task.resume()
     }
 }
 

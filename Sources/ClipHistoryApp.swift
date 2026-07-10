@@ -24,9 +24,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationCenter.default.addObserver(self, selector: #selector(toggleWindow), name: .toggleClipWindow, object: nil)
 
-        if !isAccessibilityEnabled() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                self.showAccessibilityAlert()
+        // Only prompt for accessibility once
+        if !checkAccessibility() {
+            let launchedBefore = UserDefaults.standard.bool(forKey: "hasLaunched")
+            if !launchedBefore {
+                UserDefaults.standard.set(true, forKey: "hasLaunched")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    self.showAccessibilityAlert()
+                }
             }
         }
     }
@@ -126,14 +131,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showAccessibilityAlert() {
         let alert = NSAlert()
         alert.messageText = "Accessibility Access Required"
-        alert.informativeText = "ClipHistory needs Accessibility access to paste text into other apps."
+        alert.informativeText = "ClipHistory needs Accessibility access to paste text into other apps.\n\nGrant access in: System Settings → Privacy & Security → Accessibility"
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Later")
         alert.alertStyle = .warning
         if alert.runModal() == .alertFirstButtonReturn {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                NSWorkspace.shared.open(url)
-            }
+            requestAccessibility()
         }
     }
 }
