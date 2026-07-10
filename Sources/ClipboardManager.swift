@@ -411,8 +411,9 @@ class UpdateChecker: ObservableObject {
                 return
             }
 
+            let stamp = Int(Date().timeIntervalSince1970)
             let tempDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("ClipHistory_update_\(Int(Date().timeIntervalSince1970))")
+                .appendingPathComponent("ClipHistory_update_\(stamp)")
             try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             let zipPath = tempDir.appendingPathComponent("ClipHistory.app.zip")
 
@@ -432,50 +433,64 @@ class UpdateChecker: ObservableObject {
                 }
 
                 let currentAppPath = Bundle.main.bundlePath
+                let myPID = ProcessInfo.processInfo.processIdentifier
 
-                // Move old app to trash
-                let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first!
-                    .appendingPathComponent("ClipHistory_old_\(Int(Date().timeIntervalSince1970)).app")
-                try? FileManager.default.moveItem(at: URL(fileURLWithPath: currentAppPath), to: trashURL)
+                // Write a self-contained relaunch script. It runs AFTER we quit:
+                //   1) wait for our PID to die
+                //   2) move old app -> trash
+                //   3) move new app -> destination
+                //   4) open destination
+                let script = """
+                #!/bin/bash
+                # wait for the old process to exit
+                for i in $(seq 1 50); do
+                    if ! kill -0 \(myPID) 2>/dev/null; then break; fi
+                    sleep 0.1
+                done
+                sleep 0.5
+                DEST="\(currentAppPath)"
+                NEW="\(newAppPath.path)"
+                # move old to trash
+                TRASH="$HOME/.Trash/ClipHistory_old_\(stamp).app"
+                rm -rf "$TRASH" 2>/dev/null
+                mv "$DEST" "$TRASH" 2>/dev/null
+                # move new into place
+                mv "$NEW" "$DEST" 2>/dev/null
+                # clean temp
+                rm -rf "\(tempDir.path)" 2>/dev/null
+                # relaunch
+                open "$DEST"
+                """
 
-                // Move new app into place
-                try FileManager.default.moveItem(at: newAppPath, to: URL(fileURLWithPath: currentAppPath))
+                let scriptPath = tempDir.appendingPathComponent("relaunch.sh")
+                try script.write(toFile: scriptPath.path, atomically: true, encoding: .utf8)
 
-                // Clean up temp
-                try? FileManager.default.removeItem(at: tempDir)
+                let chmod = Process()
+                chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+                chmod.arguments = ["+x", scriptPath.path]
+                try chmod.run(); chmod.waitUntilExit()
+
+                // Launch detached so it survives our termination
+                let bash = Process()
+                bash.executableURL = URL(fileURLWithPath: "/bin/bash")
+                bash.arguments = [scriptPath.path]
+                let pipe = Pipe()
+                bash.standardOutput = pipe
+                bash.standardError = pipe
+                try bash.run()
 
                 DispatchQueue.main.async {
                     self.isDownloading = false
                     self.hasUpdate = false
 
                     let alert = NSAlert()
-                    alert.messageText = "Update Complete"
-                    alert.informativeText = "ClipHistory \(self.latestVersion) installed. Restarting..."
-                    alert.addButton(withTitle: "OK")
+                    alert.messageText = "Update Ready"
+                    alert.informativeText = "ClipHistory \(self.latestVersion) will install and restart now."
+                    alert.addButton(withTitle: "Restart")
                     alert.runModal()
 
-                    // Write a restart script that launches the app after we quit
-                    let script = """
-                    #!/bin/bash
-                    sleep 1
-                    open "\(currentAppPath)"
-                    """
-                    let scriptPath = tempDir.appendingPathComponent("restart.sh")
-                    try? script.write(toFile: scriptPath.path, atomically: true, encoding: .utf8)
-
-                    let chmod = Process()
-                    chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
-                    chmod.arguments = ["+x", scriptPath.path]
-                    try? chmod.run()
-                    chmod.waitUntilExit()
-
-                    let bash = Process()
-                    bash.executableURL = URL(fileURLWithPath: "/bin/bash")
-                    bash.arguments = [scriptPath.path]
-                    try? bash.run()
-
-                    // Terminate after short delay to let the script start
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    // Quit FIRST — the script swaps the app after we're gone
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         NSApplication.shared.terminate(nil)
                     }
                 }
