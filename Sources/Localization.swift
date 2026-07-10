@@ -61,7 +61,6 @@ final class L10n: ObservableObject {
         "up_to_date":             [.en: "Up to date", .ru: "Актуально"],
         "checking":               [.en: "Checking...", .ru: "Проверка..."],
         "update_btn":             [.en: "Update", .ru: "Обновить"],
-        "check_updates":          [.en: "Check for updates", .ru: "Проверить обновления"],
         "privacy":                [.en: "Privacy", .ru: "Приватность"],
         "privacy_sub":            [.en: "100% local, no data sent", .ru: "100% локально, данные не отправляются"],
         "version":                [.en: "Version", .ru: "Версия"],

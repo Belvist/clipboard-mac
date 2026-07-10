@@ -158,6 +158,7 @@ class PasteQueue: ObservableObject {
         } else {
             NSPasteboard.general.setString(item.text, forType: .string)
         }
+        ClipboardManager.shared.syncLastFromPasteboard()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             let src = CGEventSource(stateID: .hidSystemState)
@@ -286,12 +287,26 @@ class ClipboardManager: ObservableObject {
         NSPasteboard.general.clearContents()
         if let img = item.nsImage {
             NSPasteboard.general.writeObjects([img])
-            lastImageHash = item.imageData?.hashValue ?? 0
         } else {
             NSPasteboard.general.setString(item.text, forType: .string)
-            lastContent = item.text
         }
+        syncLastFromPasteboard()
         currentContent = item.text
+    }
+
+    /// Update the change-detection state to match what the monitor will read
+    /// back from the pasteboard, so app-initiated writes (paste / queue) are
+    /// not mistaken for new user copies and re-added to history.
+    func syncLastFromPasteboard() {
+        let pb = NSPasteboard.general
+        if let tiffData = pb.data(forType: .tiff),
+           let image = NSImage(data: tiffData),
+           let tiffRep = image.tiffRepresentation {
+            lastImageHash = tiffRep.hashValue
+            lastContent = ""
+        } else if let content = pb.string(forType: .string), !content.isEmpty {
+            lastContent = content
+        }
     }
 
     func togglePin(_ item: ClipItem) {

@@ -342,92 +342,96 @@ struct ClipPopoverContent: View {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundColor(.secondary)
                     }.buttonStyle(.plain)
                 }.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
-                Divider().padding(.horizontal, 16)
 
-                settingsRow(lang.tr("launch_login"), lang.tr("launch_login_sub")) {
-                    Toggle("", isOn: Binding(
-                        get: { SMAppService.mainApp.status == .enabled },
-                        set: { val in try? val ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }
-                    )).toggleStyle(.switch).controlSize(.small)
-                }
+                Divider()
 
-                Divider().padding(.horizontal, 16)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        settingsRow(lang.tr("launch_login"), lang.tr("launch_login_sub")) {
+                            Toggle("", isOn: Binding(
+                                get: { SMAppService.mainApp.status == .enabled },
+                                set: { val in try? val ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }
+                            )).toggleStyle(.switch).controlSize(.small)
+                        }
 
-                settingsRow(lang.tr("autopaste"), checkAccessibility() ? lang.tr("enabled") : lang.tr("needed"),
-                            color: checkAccessibility() ? .green : .orange) {
-                    if checkAccessibility() {
-                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.system(size: 14))
-                    } else {
-                        Button(lang.tr("enable")) { requestAccessibility() }
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor)).foregroundColor(.white)
-                        .buttonStyle(.plain)
-                    }
-                }
+                        Divider().padding(.horizontal, 16)
 
-                Divider().padding(.horizontal, 16)
+                        settingsRow(lang.tr("autopaste"), checkAccessibility() ? lang.tr("enabled") : lang.tr("needed"),
+                                    color: checkAccessibility() ? .green : .orange) {
+                            HStack(spacing: 6) {
+                                if checkAccessibility() {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green).font(.system(size: 14))
+                                }
+                                Button(lang.tr("enable")) { requestAccessibility() }
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor))
+                                .foregroundColor(.white)
+                                .buttonStyle(.plain)
+                            }
+                        }
 
-                settingsRow(lang.tr("updates"),
-                            updater.isChecking ? lang.tr("checking") :
-                            (updater.hasUpdate ? String(format: lang.tr("available"), updater.latestVersion) : lang.tr("up_to_date")),
-                            color: updater.isChecking ? .secondary : (updater.hasUpdate ? .orange : .green)) {
-                    if updater.isChecking {
-                        ProgressView().controlSize(.small)
-                    } else if updater.hasUpdate {
-                        Button(lang.tr("update_btn")) { updater.downloadAndUpdate() }
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange)).foregroundColor(.white)
-                        .buttonStyle(.plain)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.system(size: 14))
-                    }
-                }
+                        Divider().padding(.horizontal, 16)
 
-                Divider().padding(.horizontal, 16)
+                        settingsRow(lang.tr("updates"),
+                                    updater.isChecking ? lang.tr("checking") :
+                                    (updater.hasUpdate ? String(format: lang.tr("available"), updater.latestVersion) : lang.tr("up_to_date")),
+                                    color: updater.isChecking ? .secondary : (updater.hasUpdate ? .orange : .green)) {
+                            if updater.isChecking {
+                                ProgressView().controlSize(.mini)
+                            } else if updater.hasUpdate {
+                                Button(lang.tr("update_btn")) { updater.downloadAndUpdate() }
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor))
+                                .foregroundColor(.white)
+                                .buttonStyle(.plain)
+                            } else {
+                                Button(action: { updater.checkForUpdates() }) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                .buttonStyle(.plain)
+                                .frame(width: 24, height: 24)
+                                .background(Circle().fill(Color.primary.opacity(0.08)))
+                                .foregroundColor(.secondary)
+                            }
+                        }
 
-                settingsRow(lang.tr("check_updates"), "") {
-                    Button(lang.tr("check_updates")) { updater.checkForUpdates() }
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.15)))
-                    .foregroundColor(.accentColor)
-                    .buttonStyle(.plain)
-                    .disabled(updater.isChecking)
-                }
+                        Divider().padding(.horizontal, 16)
 
-                Divider().padding(.horizontal, 16)
+                        settingsRow(lang.tr("privacy"), lang.tr("privacy_sub"), color: .green) {
+                            Image(systemName: "lock.shield").foregroundColor(.green).font(.system(size: 14))
+                        }
 
-                settingsRow(lang.tr("privacy"), lang.tr("privacy_sub"), color: .green) {
-                    Image(systemName: "lock.shield").foregroundColor(.green).font(.system(size: 14))
-                }
+                        Divider().padding(.horizontal, 16)
 
-                Divider().padding(.horizontal, 16)
+                        settingsRow(lang.tr("language"), "") {
+                            Picker("", selection: Binding(
+                                get: { lang.language },
+                                set: { lang.set($0) }
+                            )) {
+                                ForEach(AppLanguage.allCases, id: \.self) { l in
+                                    Text(l.label).tag(l)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 150)
+                        }
 
-                settingsRow(lang.tr("language"), "") {
-                    Picker("", selection: Binding(
-                        get: { lang.language },
-                        set: { lang.set($0) }
-                    )) {
-                        ForEach(AppLanguage.allCases, id: \.self) { l in
-                            Text(l.label).tag(l)
+                        Divider().padding(.horizontal, 16)
+
+                        settingsRow(lang.tr("version"), Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6") {
+                            EmptyView()
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 140)
+                    .padding(.bottom, 8)
                 }
-
-                Divider().padding(.horizontal, 16)
-
-                settingsRow(lang.tr("version"), Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4") {
-                    EmptyView()
-                }
-
-                Spacer()
             }
-            .frame(width: 320, height: 300)
+            .frame(width: 340, height: 320)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
         }.transition(.opacity)
     }

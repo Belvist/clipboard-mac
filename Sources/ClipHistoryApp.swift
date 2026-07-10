@@ -113,6 +113,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel = p
     }
 
+    private func updatePanelMask() {
+        guard let cv = panel?.contentView else { return }
+        cv.wantsLayer = true
+        let mask = CAShapeLayer()
+        mask.path = CGPath(roundedRect: cv.bounds, cornerWidth: 14, cornerHeight: 14, transform: nil)
+        cv.layer?.mask = mask
+    }
+
     @objc func toggleWindow() {
         if let p = panel, p.isVisible {
             hideWindow()
@@ -136,6 +144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         p.setFrameOrigin(NSPoint(x: x, y: y))
         p.orderFrontRegardless()
+        updatePanelMask()
         setupClickMonitor()
     }
 
