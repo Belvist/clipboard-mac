@@ -15,16 +15,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var panel: NSPanel?
     private var previouslyActiveApp: NSRunningApplication?
+    private var clickMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupStatusItem()
+        setupPanel()
         ClipboardManager.shared.startMonitoring()
         HotKeyManager.shared.register()
 
         NotificationCenter.default.addObserver(self, selector: #selector(toggleWindow), name: .toggleClipWindow, object: nil)
 
-        // Only prompt for accessibility once
         if !checkAccessibility() {
             let launchedBefore = UserDefaults.standard.bool(forKey: "hasLaunched")
             if !launchedBefore {
@@ -39,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         HotKeyManager.shared.unregister()
         ClipboardManager.shared.stopMonitoring()
+        removeClickMonitor()
     }
 
     private func setupStatusItem() {
@@ -52,16 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func toggleWindow() {
-        if let p = panel, p.isVisible {
-            hideWindow()
-            return
-        }
-
-        previouslyActiveApp = NSWorkspace.shared.frontmostApplication
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.main?.visibleFrame ?? .zero
-
+    private func setupPanel() {
         let contentView = ClipPopoverContent(onSelect: { [weak self] item in
             self?.hideWindow()
             if let app = self?.previouslyActiveApp {
@@ -92,15 +85,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let panelWidth: CGFloat = 400
         let panelHeight: CGFloat = 520
 
-        var x = mouse.x - panelWidth / 2
-        var y = mouse.y - panelHeight - 14
-
-        if x < screen.minX + 10 { x = screen.minX + 10 }
-        if x + panelWidth > screen.maxX - 10 { x = screen.maxX - panelWidth - 10 }
-        if y < screen.minY + 10 { y = mouse.y + 20 }
-
         let p = NSPanel(
-            contentRect: NSRect(x: x, y: y, width: panelWidth, height: panelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
             styleMask: [.titled, .closable, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
@@ -125,12 +111,66 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         p.standardWindowButton(.zoomButton)?.isHidden = true
 
         panel = p
+    }
+
+    @objc func toggleWindow() {
+        if let p = panel, p.isVisible {
+            hideWindow()
+            return
+        }
+
+        previouslyActiveApp = NSWorkspace.shared.frontmostApplication
+        guard let p = panel else { return }
+
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.main?.visibleFrame ?? .zero
+        let panelWidth = p.frame.width
+        let panelHeight = p.frame.height
+
+        var x = mouse.x - panelWidth / 2
+        var y = mouse.y - panelHeight - 14
+
+        if x < screen.minX + 10 { x = screen.minX + 10 }
+        if x + panelWidth > screen.maxX - 10 { x = screen.maxX - panelWidth - 10 }
+        if y < screen.minY + 10 { y = mouse.y + 20 }
+
+        p.setFrameOrigin(NSPoint(x: x, y: y))
         p.orderFrontRegardless()
+        setupClickMonitor()
     }
 
     func hideWindow() {
         panel?.orderOut(nil)
+        removeClickMonitor()
         previouslyActiveApp?.activate(options: .activateIgnoringOtherApps)
+    }
+
+    private func setupClickMonitor() {
+        removeClickMonitor()
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, let panel = self.panel, panel.isVisible else { return }
+
+            // Convert click location to screen coordinates
+            let clickLocation = NSEvent.mouseLocation
+
+            // Check if click is inside the panel
+            let panelFrame = panel.frame
+            if panelFrame.contains(clickLocation) {
+                return // Click is inside panel, don't hide
+            }
+
+            // Click is outside panel, hide it
+            DispatchQueue.main.async {
+                self.hideWindow()
+            }
+        }
+    }
+
+    private func removeClickMonitor() {
+        if let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickMonitor = nil
+        }
     }
 
     private func showAccessibilityAlert() {
