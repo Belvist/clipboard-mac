@@ -479,22 +479,18 @@ struct ClipItemRow: View {
     }
 
     var body: some View {
-        ZStack {
-            Button(action: {
-                if isQueueMode {
-                    if isSelected { queueSelected.remove(item.id) }
-                    else { queueSelected.insert(item.id) }
-                } else {
-                    onSelect(item)
-                    copiedId = item.id
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        if copiedId == item.id { copiedId = nil }
-                    }
+        Button(action: {
+            if isQueueMode {
+                if isSelected { queueSelected.remove(item.id) }
+                else { queueSelected.insert(item.id) }
+            } else {
+                onSelect(item)
+                copiedId = item.id
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    if copiedId == item.id { copiedId = nil }
                 }
-            }) { Color.clear }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+            }
+        }) {
             HStack(alignment: .top, spacing: 10) {
                 if isQueueMode {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -573,19 +569,23 @@ struct ClipItemRow: View {
                 }
 
                 Spacer(minLength: 4)
-
-                if isHovered && !isQueueMode {
-                    HStack(spacing: 4) {
-                        rowBtn("pin", active: item.pinned) { clipboard.togglePin(item) }
-                        rowBtn("trash", active: false, color: .red) { clipboard.removeItem(item) }
-                    }.transition(.opacity)
-                }
             }
             .padding(.horizontal, 14).padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? Color.accentColor.opacity(0.15) : isHovered ? Color.accentColor.opacity(0.08) : Color.clear)
             )
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .trailing) {
+            if isHovered && !isQueueMode {
+                HStack(spacing: 4) {
+                    rowBtn("pin", active: item.pinned) { clipboard.togglePin(item) }
+                    rowBtn("trash", active: false, color: .red) { clipboard.removeItem(item) }
+                }
+                .padding(.trailing, 14)
+                .transition(.opacity)
+            }
         }
         .contentShape(Rectangle())
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { isHovered = h } }
