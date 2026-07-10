@@ -482,19 +482,7 @@ struct ClipItemRow: View {
     }
 
     var body: some View {
-        Button(action: {
-            if isQueueMode {
-                if isSelected { queueSelected.remove(item.id) }
-                else { queueSelected.insert(item.id) }
-            } else {
-                onSelect(item)
-                copiedId = item.id
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    if copiedId == item.id { copiedId = nil }
-                }
-            }
-        }) {
-            HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
                 if isQueueMode {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 14))
@@ -585,8 +573,19 @@ struct ClipItemRow: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? Color.accentColor.opacity(0.15) : isHovered ? Color.accentColor.opacity(0.08) : Color.clear)
             )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isQueueMode {
+                if isSelected { queueSelected.remove(item.id) }
+                else { queueSelected.insert(item.id) }
+            } else {
+                onSelect(item)
+                copiedId = item.id
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    if copiedId == item.id { copiedId = nil }
+                }
+            }
         }
-        .buttonStyle(.plain)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { isHovered = h } }
     }
 
