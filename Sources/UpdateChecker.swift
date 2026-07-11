@@ -8,9 +8,15 @@ class UpdateChecker: ObservableObject {
     @Published var isDownloading = false
     @Published var isChecking = false
     @Published var downloadProgress: Double = 0
+    @Published var updateError: String?
 
     var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+    }
+
+    private var backupPath: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ClipHistory_backup.app")
     }
 
     static func isNewer(latest: String, current: String) -> Bool {
@@ -30,12 +36,21 @@ class UpdateChecker: ObservableObject {
     func checkForUpdates() {
         guard !isChecking else { return }
         isChecking = true
-        guard let url = URL(string: "https://api.github.com/repos/Belvist/clipboard-mac/releases/latest") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        updateError = nil
+        guard let url = URL(string: "https://api.github.com/repos/Belvist/clipboard-mac/releases/latest") else {
+            DispatchQueue.main.async { self.isChecking = false }
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, response, _ in
             guard let data = data,
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let tagName = json["tag_name"] as? String else {
-                DispatchQueue.main.async { self.isChecking = false }
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tagName = json["tag_name"] as? String else {
+                DispatchQueue.main.async {
+                    self.isChecking = false
+                    self.updateError = "network_error"
+                }
                 return
             }
             DispatchQueue.main.async {
@@ -52,13 +67,31 @@ class UpdateChecker: ObservableObject {
     }
 
     func downloadAndUpdate() {
-        guard let url = URL(string: downloadURL) else { return }
+        guard let url = URL(string: downloadURL) else {
+            updateError = "invalid_url"
+            return
+        }
         isDownloading = true
         downloadProgress = 0
+        updateError = nil
 
-        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
-            guard let self = self, let data = data, error == nil else {
-                DispatchQueue.main.async { self?.isDownloading = false }
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            guard let data = data, error == nil else {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.updateError = "download_failed"
+                }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.updateError = "download_failed"
+                }
                 return
             }
 
@@ -71,17 +104,53 @@ class UpdateChecker: ObservableObject {
             do {
                 try data.write(to: zipPath)
 
+                guard data.starts(with: [0x50, 0x4B]) else {
+                    DispatchQueue.main.async {
+                        self.isDownloading = false
+                        self.updateError = "corrupt_download"
+                    }
+                    return
+                }
+
                 let unzip = Process()
                 unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
                 unzip.arguments = ["-o", zipPath.path, "-d", tempDir.path]
                 try unzip.run()
                 unzip.waitUntilExit()
 
-                let newAppPath = tempDir.appendingPathComponent("ClipHistory.app")
-                guard FileManager.default.fileExists(atPath: newAppPath.path) else {
-                    DispatchQueue.main.async { self.isDownloading = false }
+                guard unzip.terminationStatus == 0 else {
+                    DispatchQueue.main.async {
+                        self.isDownloading = false
+                        self.updateError = "unzip_failed"
+                    }
                     return
                 }
+
+                let newAppPath = tempDir.appendingPathComponent("ClipHistory.app")
+                let newBinaryPath = newAppPath.appendingPathComponent("Contents/MacOS/ClipHistory")
+                let newInfoPath = newAppPath.appendingPathComponent("Contents/Info.plist")
+
+                guard FileManager.default.fileExists(atPath: newAppPath.path),
+                      FileManager.default.fileExists(atPath: newBinaryPath.path),
+                      FileManager.default.fileExists(atPath: newInfoPath.path) else {
+                    DispatchQueue.main.async {
+                        self.isDownloading = false
+                        self.updateError = "invalid_bundle"
+                    }
+                    return
+                }
+
+                let newVersion = NSDictionary(contentsOf: newInfoPath)?["CFBundleShortVersionString"] as? String ?? ""
+                guard !newVersion.isEmpty, UpdateChecker.isNewer(latest: newVersion, current: self.currentVersion) else {
+                    DispatchQueue.main.async {
+                        self.isDownloading = false
+                        self.updateError = "version_not_newer"
+                    }
+                    return
+                }
+
+                try? FileManager.default.removeItem(at: self.backupPath)
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: Bundle.main.bundlePath), to: self.backupPath)
 
                 let currentAppPath = Bundle.main.bundlePath
                 let myPID = ProcessInfo.processInfo.processIdentifier
@@ -93,12 +162,22 @@ class UpdateChecker: ObservableObject {
                     sleep 0.1
                 done
                 sleep 0.5
+
                 DEST="\(currentAppPath)"
                 NEW="\(newAppPath.path)"
+                BACKUP="\(self.backupPath.path)"
                 TRASH="$HOME/.Trash/ClipHistory_old_\(stamp).app"
+
                 rm -rf "$TRASH" 2>/dev/null
                 mv "$DEST" "$TRASH" 2>/dev/null
                 mv "$NEW" "$DEST" 2>/dev/null
+
+                if [ ! -f "$DEST/Contents/MacOS/ClipHistory" ]; then
+                    mv "$BACKUP" "$DEST" 2>/dev/null
+                else
+                    rm -rf "$BACKUP" 2>/dev/null
+                fi
+
                 rm -rf "\(tempDir.path)" 2>/dev/null
                 open "$DEST"
                 """
@@ -134,9 +213,23 @@ class UpdateChecker: ObservableObject {
                     }
                 }
             } catch {
-                DispatchQueue.main.async { self.isDownloading = false }
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.updateError = "update_failed"
+                }
             }
         }
         task.resume()
+    }
+
+    func restoreBackupIfNeeded() {
+        guard FileManager.default.fileExists(atPath: backupPath.path) else { return }
+        let currentBinary = Bundle.main.bundlePath + "/Contents/MacOS/ClipHistory"
+        guard !FileManager.default.fileExists(atPath: currentBinary) else {
+            try? FileManager.default.removeItem(at: backupPath)
+            return
+        }
+        try? FileManager.default.copyItem(at: backupPath, to: URL(fileURLWithPath: Bundle.main.bundlePath))
+        try? FileManager.default.removeItem(at: backupPath)
     }
 }

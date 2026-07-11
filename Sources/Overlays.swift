@@ -197,6 +197,54 @@ struct SettingsOverlay: View {
     }
 }
 
+// MARK: - Update Error Toast
+
+struct UpdateErrorToast: View {
+    @EnvironmentObject private var lang: L10n
+    let error: String
+    @ObservedObject var updater: UpdateChecker
+    @State private var visible = true
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                    Text(errorText)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color.red).shadow(color: .black.opacity(0.25), radius: 8, y: 4))
+                Spacer()
+            }.padding(.bottom, 40)
+        }
+        .allowsHitTesting(true)
+        .onTapGesture { updater.updateError = nil }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                updater.updateError = nil
+            }
+        }
+    }
+
+    private var errorText: String {
+        switch error {
+        case "network_error": return lang.tr("err_network")
+        case "download_failed": return lang.tr("err_download")
+        case "corrupt_download": return lang.tr("err_corrupt")
+        case "unzip_failed": return lang.tr("err_unzip")
+        case "invalid_bundle": return lang.tr("err_bundle")
+        case "version_not_newer": return lang.tr("err_version")
+        case "update_failed": return lang.tr("err_update")
+        default: return lang.tr("err_update")
+        }
+    }
+}
+
 // MARK: - Settings Row
 
 struct SettingsRow<V: View>: View {

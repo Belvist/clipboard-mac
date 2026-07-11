@@ -68,6 +68,7 @@ struct ClipPopoverContent: View {
             if showQuitConfirm { QuitConfirm(show: $showQuitConfirm) }
             if showSettings { SettingsOverlay(updater: updater, show: $showSettings) }
             if updater.isDownloading { DownloadOverlay(updater: updater) }
+            if let err = updater.updateError { UpdateErrorToast(error: err, updater: updater) }
         }
         .onAppear {
             updater.checkForUpdates()

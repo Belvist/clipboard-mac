@@ -20,6 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        UpdateChecker.shared.restoreBackupIfNeeded()
         setupStatusItem()
         setupPanel()
         ClipboardManager.shared.startMonitoring()

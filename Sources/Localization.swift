@@ -93,7 +93,15 @@ final class L10n: ObservableObject {
         "ct_creditCard":          [.en: "card", .ru: "карта"],
         "ct_table":               [.en: "table", .ru: "таблица"],
         "ct_json":                [.en: "json", .ru: "json"],
-        "ct_image":               [.en: "image", .ru: "изображение"]
+        "ct_image":               [.en: "image", .ru: "изображение"],
+
+        "err_network":            [.en: "Network error", .ru: "Ошибка сети"],
+        "err_download":           [.en: "Download failed", .ru: "Ошибка загрузки"],
+        "err_corrupt":            [.en: "Downloaded file is corrupted", .ru: "Загруженный файл повреждён"],
+        "err_unzip":              [.en: "Failed to unpack update", .ru: "Не удалось распаковать обновление"],
+        "err_bundle":             [.en: "Invalid app bundle", .ru: "Неверный файл приложения"],
+        "err_version":            [.en: "Version is not newer", .ru: "Версия не новее текущей"],
+        "err_update":             [.en: "Update failed", .ru: "Ошибка обновления"]
     ]
 
     init() {
