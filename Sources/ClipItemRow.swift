@@ -131,7 +131,7 @@ struct ClipItemRow: View {
                             .foregroundColor(.secondary)
                     }
                     Text(item.text)
-                        .font(.system(size: 11, design: item.contentType == .code ? .monospaced : .rounded))
+                        .font(.system(size: 13, design: item.contentType == .code ? .monospaced : .rounded))
                         .foregroundColor(item.isSensitive ? .red.opacity(0.9) : .primary)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
