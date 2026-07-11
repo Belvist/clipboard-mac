@@ -61,36 +61,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func updateStatusCount() {
         guard let button = statusItem?.button else { return }
         let count = ClipboardManager.shared.items.count
+        let maxCount = ClipboardManager.shared.maxItems
+        let fraction = maxCount > 0 ? CGFloat(count) / CGFloat(maxCount) : 0
 
-        let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")!
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        let baseIcon = icon.withSymbolConfiguration(config) ?? icon
+        let size = NSSize(width: 20, height: 20)
+        let img = NSImage(size: size, flipped: false) { rect in
+            let center = NSPoint(x: rect.midX, y: rect.midY)
+            let ringRadius: CGFloat = 8
+            let ringWidth: CGFloat = 2.5
 
-        if count > 0 {
-            let badgeSize: CGFloat = 12
-            let combined = NSImage(size: NSSize(width: baseIcon.size.width + badgeSize / 2, height: baseIcon.size.height + badgeSize / 2), flipped: false) { rect in
-                baseIcon.draw(in: NSRect(x: 0, y: badgeSize / 2, width: baseIcon.size.width, height: baseIcon.size.height), from: .zero, operation: .sourceOver, fraction: 1.0)
+            if count > 0 {
+                let bgRing = NSBezierPath()
+                bgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360 * 1, clockwise: true)
+                bgRing.lineWidth = ringWidth
+                NSColor.separatorColor.setStroke()
+                bgRing.stroke()
 
-                let text = count > 99 ? "99+" : "\(count)"
+                if fraction > 0 {
+                    let fgRing = NSBezierPath()
+                    fgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360 * fraction, clockwise: true)
+                    fgRing.lineWidth = ringWidth
+                    fgRing.lineCapStyle = .round
+                    NSColor.controlAccentColor.setStroke()
+                    fgRing.stroke()
+                }
+
+                let text = "\(count)"
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 7, weight: .bold),
-                    .foregroundColor: NSColor.white
+                    .font: NSFont.systemFont(ofSize: 8, weight: .semibold),
+                    .foregroundColor: NSColor.labelColor
                 ]
                 let textSize = text.size(withAttributes: attrs)
-                let badgeW = max(textSize.width + 4, badgeSize)
-                let badgeRect = NSRect(x: baseIcon.size.width - 2, y: 0, width: badgeW, height: badgeSize)
-                let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: badgeSize / 2, yRadius: badgeSize / 2)
-                NSColor.red.setFill()
-                badgePath.fill()
-                text.draw(at: NSPoint(x: badgeRect.midX - textSize.width / 2, y: badgeRect.midY - textSize.height / 2), withAttributes: attrs)
-                return true
+                text.draw(at: NSPoint(x: center.x - textSize.width / 2, y: center.y - textSize.height / 2), withAttributes: attrs)
+            } else {
+                let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")
+                let iconSize = NSSize(width: 13, height: 13)
+                icon?.draw(in: NSRect(x: center.x - iconSize.width / 2, y: center.y - iconSize.height / 2, width: iconSize.width, height: iconSize.height), from: .zero, operation: .sourceOver, fraction: 1.0)
             }
-            combined.isTemplate = false
-            button.image = combined
-        } else {
-            baseIcon.isTemplate = true
-            button.image = baseIcon
+            return true
         }
+        img.isTemplate = false
+        button.image = img
     }
 
     private func setupPanel() {
