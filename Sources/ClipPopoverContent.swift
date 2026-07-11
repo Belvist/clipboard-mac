@@ -129,7 +129,6 @@ struct ClipPopoverContent: View {
         HStack(spacing: 0) {
             tabButton(lang.tr("tab_all"), icon: "list.bullet", tag: 0)
             tabButton(lang.tr("tab_project"), icon: "folder", tag: 1)
-            tabButton(lang.tr("tab_sensitive"), icon: "lock.shield", tag: 2)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
