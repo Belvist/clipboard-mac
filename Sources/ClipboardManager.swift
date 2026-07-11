@@ -7,8 +7,8 @@ class ClipboardManager: ObservableObject {
 
     private var timer: Timer?
     private var lastContent: String = ""
-    private var lastImageHash: Int = 0
-    let maxItems = 50
+    private var lastImageData: Data?
+    let maxItems = 25
 
     var storageURL: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -36,11 +36,9 @@ class ClipboardManager: ObservableObject {
         let pb = NSPasteboard.general
 
         if let image_data = pb.data(forType: .tiff),
-           let image = NSImage(data: image_data),
-           let tiffRep = image.tiffRepresentation {
-            let hash = tiffRep.hashValue
-            if hash != lastImageHash {
-                lastImageHash = hash
+           let image = NSImage(data: image_data) {
+            if image_data != lastImageData {
+                lastImageData = image_data
                 lastContent = ""
                 let frontApp = NSWorkspace.shared.frontmostApplication
                 let appName = frontApp?.localizedName ?? "Unknown"
@@ -115,13 +113,12 @@ class ClipboardManager: ObservableObject {
 
     func syncLastFromPasteboard() {
         let pb = NSPasteboard.general
-        if let tiffData = pb.data(forType: .tiff),
-           let image = NSImage(data: tiffData),
-           let tiffRep = image.tiffRepresentation {
-            lastImageHash = tiffRep.hashValue
+        if let tiffData = pb.data(forType: .tiff) {
+            lastImageData = tiffData
             lastContent = ""
         } else if let content = pb.string(forType: .string), !content.isEmpty {
             lastContent = content
+            lastImageData = nil
         }
     }
 
@@ -139,7 +136,7 @@ class ClipboardManager: ObservableObject {
     }
 
     func clearAll() {
-        items = items.filter { $0.pinned }.prefix(maxItems).map { $0 }
+        items = items.filter { $0.pinned && $0.contentType != .image }.prefix(maxItems).map { $0 }
         save()
     }
 
@@ -158,6 +155,7 @@ class ClipboardManager: ObservableObject {
         guard let data = try? Data(contentsOf: storageURL) else { return }
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
-        items = (try? dec.decode([ClipItem].self, from: data)) ?? []
+        items = ((try? dec.decode([ClipItem].self, from: data)) ?? []).filter { $0.contentType != .image }
+        save()
     }
 }
