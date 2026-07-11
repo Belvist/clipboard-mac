@@ -159,14 +159,6 @@ struct SettingsOverlay: View {
                             }
                         }
 
-                        Divider().padding(.horizontal, 16)
-
-                        SettingsRow(title: lang.tr("privacy"), subtitle: lang.tr("privacy_sub"), color: .green) {
-                            Image(systemName: "lock.shield").foregroundColor(.green).font(.system(size: 14))
-                        }
-
-                        Divider().padding(.horizontal, 16)
-
                         SettingsRow(title: lang.tr("language"), subtitle: "") {
                             Picker("", selection: Binding(
                                 get: { lang.language },
