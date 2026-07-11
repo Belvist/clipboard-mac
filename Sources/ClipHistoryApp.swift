@@ -67,9 +67,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let totalWidth: CGFloat = 34
         let height: CGFloat = 20
         let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
-            let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")
-            icon?.isTemplate = true
-            icon?.draw(in: NSRect(x: 0, y: 1, width: 13, height: 13), from: .zero, operation: .sourceOver, fraction: 1.0)
+            let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")!
+            let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+            let sizedIcon = icon.withSymbolConfiguration(iconConfig) ?? icon
+            let tintedIcon = sizedIcon.copy() as! NSImage
+            tintedIcon.lockFocus()
+            NSColor.white.set()
+            NSRect(origin: .zero, size: tintedIcon.size).fill(using: .sourceAtop)
+            tintedIcon.unlockFocus()
+            tintedIcon.draw(in: NSRect(x: 0, y: 1, width: 13, height: 13), from: .zero, operation: .sourceOver, fraction: 1.0)
 
             let center = NSPoint(x: totalWidth - height / 2, y: height / 2)
             let ringRadius: CGFloat = 7
