@@ -113,11 +113,11 @@ class UpdateChecker: ObservableObject {
 
                 let bash = Process()
                 bash.executableURL = URL(fileURLWithPath: "/bin/bash")
-                bash.arguments = [scriptPath.path]
-                let pipe = Pipe()
-                bash.standardOutput = pipe
-                bash.standardError = pipe
+                bash.arguments = ["-c", "nohup \(scriptPath.path) >/dev/null 2>&1 &"]
+                bash.standardOutput = FileHandle.nullDevice
+                bash.standardError = FileHandle.nullDevice
                 try bash.run()
+                bash.waitUntilExit()
 
                 DispatchQueue.main.async {
                     self.isDownloading = false
