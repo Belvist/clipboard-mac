@@ -48,4 +48,5 @@ enum ContentType: String, Codable {
 
 extension Notification.Name {
     static let toggleClipWindow = Notification.Name("toggleClipWindow")
+    static let clipboardUpdated = Notification.Name("clipboardUpdated")
 }

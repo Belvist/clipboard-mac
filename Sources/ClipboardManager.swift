@@ -65,6 +65,7 @@ class ClipboardManager: ObservableObject {
                         self.items = Array(self.items.prefix(self.maxItems))
                     }
                     self.save()
+                    NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
                 }
             }
         }
@@ -95,6 +96,7 @@ class ClipboardManager: ObservableObject {
                     self.items = Array(self.items.prefix(self.maxItems))
                 }
                 self.save()
+                NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
             }
         }
     }
@@ -128,16 +130,19 @@ class ClipboardManager: ObservableObject {
         updated[idx].pinned.toggle()
         items = updated
         save()
+        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     func removeItem(_ item: ClipItem) {
         items = items.filter { $0.id != item.id }
         save()
+        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     func clearAll() {
         items = items.filter { $0.pinned && $0.contentType != .image }.prefix(maxItems).map { $0 }
         save()
+        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     var projects: [String] {

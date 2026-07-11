@@ -54,6 +54,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             button.action = #selector(toggleWindow)
             button.target = self
         }
+        updateStatusCount()
+        NotificationCenter.default.addObserver(self, selector: #selector(updateStatusCount), name: .clipboardUpdated, object: nil)
+    }
+
+    @objc private func updateStatusCount() {
+        guard let button = statusItem?.button else { return }
+        let count = ClipboardManager.shared.items.count
+        if count > 0 {
+            button.title = "  \(count)"
+        } else {
+            button.title = ""
+        }
     }
 
     private func setupPanel() {
