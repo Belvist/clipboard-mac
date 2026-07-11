@@ -62,31 +62,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let button = statusItem?.button else { return }
         let count = ClipboardManager.shared.items.count
 
-        let img = NSImage(size: NSSize(width: 22, height: 18), flipped: false) { rect in
-            let iconRect = NSRect(x: 0, y: 0, width: 14, height: 18)
-            let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")
-            icon?.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+        let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")!
+        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        let baseIcon = icon.withSymbolConfiguration(config) ?? icon
 
-            if count > 0 {
-                let text = "\(count)"
+        if count > 0 {
+            let badgeSize: CGFloat = 12
+            let combined = NSImage(size: NSSize(width: baseIcon.size.width + badgeSize / 2, height: baseIcon.size.height + badgeSize / 2), flipped: false) { rect in
+                baseIcon.draw(in: NSRect(x: 0, y: badgeSize / 2, width: baseIcon.size.width, height: baseIcon.size.height), from: .zero, operation: .sourceOver, fraction: 1.0)
+
+                let text = count > 99 ? "99+" : "\(count)"
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 8, weight: .heavy),
+                    .font: NSFont.systemFont(ofSize: 7, weight: .bold),
                     .foregroundColor: NSColor.white
                 ]
                 let textSize = text.size(withAttributes: attrs)
-                let badgeW = max(textSize.width + 5, textSize.height + 3)
-                let badgeH = textSize.height + 3
-                let badgeRect = NSRect(x: 10, y: 8, width: badgeW, height: badgeH)
-                let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: badgeH / 2, yRadius: badgeH / 2)
-                NSColor.systemRed.setFill()
+                let badgeW = max(textSize.width + 4, badgeSize)
+                let badgeRect = NSRect(x: baseIcon.size.width - 2, y: 0, width: badgeW, height: badgeSize)
+                let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: badgeSize / 2, yRadius: badgeSize / 2)
+                NSColor.red.setFill()
                 badgePath.fill()
                 text.draw(at: NSPoint(x: badgeRect.midX - textSize.width / 2, y: badgeRect.midY - textSize.height / 2), withAttributes: attrs)
+                return true
             }
-            return true
+            combined.isTemplate = false
+            button.image = combined
+        } else {
+            baseIcon.isTemplate = true
+            button.image = baseIcon
         }
-        img.isTemplate = false
-        button.image = img
-        button.attributedTitle = NSAttributedString(string: "")
     }
 
     private func setupPanel() {
