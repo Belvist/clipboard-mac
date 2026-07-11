@@ -64,44 +64,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let maxCount = ClipboardManager.shared.maxItems
         let fraction = maxCount > 0 ? CGFloat(count) / CGFloat(maxCount) : 0
 
-        let size = NSSize(width: 20, height: 20)
-        let img = NSImage(size: size, flipped: false) { rect in
-            let center = NSPoint(x: rect.midX, y: rect.midY)
-            let ringRadius: CGFloat = 8
+        let totalWidth: CGFloat = 34
+        let height: CGFloat = 20
+        let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
+            let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")
+            icon?.isTemplate = true
+            icon?.draw(in: NSRect(x: 0, y: 1, width: 13, height: 13), from: .zero, operation: .sourceOver, fraction: 1.0)
+
+            let center = NSPoint(x: totalWidth - height / 2, y: height / 2)
+            let ringRadius: CGFloat = 7
             let ringWidth: CGFloat = 2.5
 
+            let bgRing = NSBezierPath()
+            bgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360, clockwise: true)
+            bgRing.lineWidth = ringWidth
+            NSColor.white.withAlphaComponent(0.25).setStroke()
+            bgRing.stroke()
+
+            if fraction > 0 {
+                let fgRing = NSBezierPath()
+                fgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360 * fraction, clockwise: true)
+                fgRing.lineWidth = ringWidth
+                fgRing.lineCapStyle = .round
+                NSColor.white.setStroke()
+                fgRing.stroke()
+            }
+
             if count > 0 {
-                let bgRing = NSBezierPath()
-                bgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360 * 1, clockwise: true)
-                bgRing.lineWidth = ringWidth
-                NSColor.separatorColor.setStroke()
-                bgRing.stroke()
-
-                if fraction > 0 {
-                    let fgRing = NSBezierPath()
-                    fgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360 * fraction, clockwise: true)
-                    fgRing.lineWidth = ringWidth
-                    fgRing.lineCapStyle = .round
-                    NSColor.controlAccentColor.setStroke()
-                    fgRing.stroke()
-                }
-
                 let text = "\(count)"
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 8, weight: .semibold),
-                    .foregroundColor: NSColor.labelColor
+                    .font: NSFont.systemFont(ofSize: 8, weight: .bold),
+                    .foregroundColor: NSColor.white
                 ]
                 let textSize = text.size(withAttributes: attrs)
                 text.draw(at: NSPoint(x: center.x - textSize.width / 2, y: center.y - textSize.height / 2), withAttributes: attrs)
-            } else {
-                let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")
-                let iconSize = NSSize(width: 13, height: 13)
-                icon?.draw(in: NSRect(x: center.x - iconSize.width / 2, y: center.y - iconSize.height / 2, width: iconSize.width, height: iconSize.height), from: .zero, operation: .sourceOver, fraction: 1.0)
             }
             return true
         }
         img.isTemplate = false
         button.image = img
+        button.attributedTitle = NSAttributedString(string: "")
     }
 
     private func setupPanel() {
