@@ -4,7 +4,7 @@ import ServiceManagement
 struct ClipPopoverContent: View {
     @StateObject private var clipboard = ClipboardManager.shared
     @StateObject private var pasteQueue = PasteQueue.shared
-    @StateObject private var updater = UpdateChecker()
+    @ObservedObject private var updater = UpdateChecker.shared
     @EnvironmentObject private var lang: L10n
     @State private var searchText = ""
     @State private var copiedId: UUID?
@@ -21,7 +21,6 @@ struct ClipPopoverContent: View {
     init(onSelect: @escaping (ClipItem) -> Void = { _ in }, onDismiss: @escaping () -> Void = {}) {
         self._clipboard = StateObject(wrappedValue: ClipboardManager.shared)
         self._pasteQueue = StateObject(wrappedValue: PasteQueue.shared)
-        self._updater = StateObject(wrappedValue: UpdateChecker())
         self._searchText = State(initialValue: "")
         self._copiedId = State(initialValue: nil)
         self._showQuitConfirm = State(initialValue: false)

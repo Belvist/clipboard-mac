@@ -130,6 +130,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.orderFront(nil)
 
         installMonitors()
+        UpdateChecker.shared.checkForUpdates()
     }
 
     func hidePanel() {

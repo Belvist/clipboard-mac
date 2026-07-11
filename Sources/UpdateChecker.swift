@@ -1,6 +1,7 @@
 import Cocoa
 
 class UpdateChecker: ObservableObject {
+    static let shared = UpdateChecker()
     @Published var hasUpdate = false
     @Published var latestVersion = ""
     @Published var downloadURL = ""
@@ -13,7 +14,17 @@ class UpdateChecker: ObservableObject {
     }
 
     static func isNewer(latest: String, current: String) -> Bool {
-        !latest.isEmpty && !current.isEmpty && latest != current
+        guard !latest.isEmpty, !current.isEmpty else { return false }
+        let latestParts = latest.split(separator: ".").compactMap { Int($0) }
+        let currentParts = current.split(separator: ".").compactMap { Int($0) }
+        let count = max(latestParts.count, currentParts.count)
+        for i in 0..<count {
+            let l = i < latestParts.count ? latestParts[i] : 0
+            let c = i < currentParts.count ? currentParts[i] : 0
+            if l > c { return true }
+            if l < c { return false }
+        }
+        return false
     }
 
     func checkForUpdates() {
