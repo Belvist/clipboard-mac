@@ -132,7 +132,14 @@ class UpdateChecker: ObservableObject {
 
                 if !FileManager.default.fileExists(atPath: extractedApp.path),
                    FileManager.default.fileExists(atPath: extractedContents.path) {
-                    try FileManager.default.moveItem(at: extractedContents, to: extractedApp)
+                    let appContents = extractedApp.appendingPathComponent("Contents")
+                    try FileManager.default.createDirectory(at: appContents, withIntermediateDirectories: true)
+                    for item in try FileManager.default.contentsOfDirectory(at: extractedContents, includingPropertiesForKeys: nil) {
+                        let dest = appContents.appendingPathComponent(item.lastPathComponent)
+                        try? FileManager.default.removeItem(at: dest)
+                        try FileManager.default.moveItem(at: item, to: dest)
+                    }
+                    try? FileManager.default.removeItem(at: extractedContents)
                     newAppPath = extractedApp
                 }
 
