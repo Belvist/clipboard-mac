@@ -96,7 +96,7 @@ final class L10n: ObservableObject {
         "ct_image":               [.en: "image", .ru: "изображение"]
     ]
 
-    private init() {
+    init() {
         if let saved = UserDefaults.standard.string(forKey: "appLanguage"),
            let lang = AppLanguage(rawValue: saved) {
             self.language = lang
