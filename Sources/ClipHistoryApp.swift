@@ -61,11 +61,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func updateStatusCount() {
         guard let button = statusItem?.button else { return }
         let count = ClipboardManager.shared.items.count
-        if count > 0 {
-            button.title = "  \(count)"
-        } else {
-            button.title = ""
+
+        let img = NSImage(size: NSSize(width: 22, height: 18), flipped: false) { rect in
+            let iconRect = NSRect(x: 0, y: 0, width: 14, height: 18)
+            let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")
+            icon?.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+
+            if count > 0 {
+                let text = "\(count)"
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 8, weight: .heavy),
+                    .foregroundColor: NSColor.white
+                ]
+                let textSize = text.size(withAttributes: attrs)
+                let badgeW = max(textSize.width + 5, textSize.height + 3)
+                let badgeH = textSize.height + 3
+                let badgeRect = NSRect(x: 10, y: 8, width: badgeW, height: badgeH)
+                let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: badgeH / 2, yRadius: badgeH / 2)
+                NSColor.systemRed.setFill()
+                badgePath.fill()
+                text.draw(at: NSPoint(x: badgeRect.midX - textSize.width / 2, y: badgeRect.midY - textSize.height / 2), withAttributes: attrs)
+            }
+            return true
         }
+        img.isTemplate = false
+        button.image = img
+        button.attributedTitle = NSAttributedString(string: "")
     }
 
     private func setupPanel() {
