@@ -126,7 +126,16 @@ class UpdateChecker: ObservableObject {
                     return
                 }
 
-                let newAppPath = tempDir.appendingPathComponent("ClipHistory.app")
+                let extractedContents = tempDir.appendingPathComponent("Contents")
+                let extractedApp = tempDir.appendingPathComponent("ClipHistory.app")
+                var newAppPath = extractedApp
+
+                if !FileManager.default.fileExists(atPath: extractedApp.path),
+                   FileManager.default.fileExists(atPath: extractedContents.path) {
+                    try FileManager.default.moveItem(at: extractedContents, to: extractedApp)
+                    newAppPath = extractedApp
+                }
+
                 let newBinaryPath = newAppPath.appendingPathComponent("Contents/MacOS/ClipHistory")
                 let newInfoPath = newAppPath.appendingPathComponent("Contents/Info.plist")
 
