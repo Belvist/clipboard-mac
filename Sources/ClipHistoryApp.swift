@@ -57,62 +57,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             button.action = #selector(toggleWindow)
             button.target = self
         }
-        updateStatusCount()
-        NotificationCenter.default.addObserver(self, selector: #selector(updateStatusCount), name: .clipboardUpdated, object: nil)
-    }
-
-    @objc private func updateStatusCount() {
-        guard let button = statusItem?.button else { return }
-        let count = ClipboardManager.shared.items.count
-        let maxCount = ClipboardManager.shared.maxItems
-        let fraction = maxCount > 0 ? CGFloat(count) / CGFloat(maxCount) : 0
-
-        let totalWidth: CGFloat = 34
-        let height: CGFloat = 20
-        let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
-            let icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Clip")!
-            let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
-            let sizedIcon = icon.withSymbolConfiguration(iconConfig) ?? icon
-            let tintedIcon = sizedIcon.copy() as! NSImage
-            tintedIcon.lockFocus()
-            NSColor.white.set()
-            NSRect(origin: .zero, size: tintedIcon.size).fill(using: .sourceAtop)
-            tintedIcon.unlockFocus()
-            tintedIcon.draw(in: NSRect(x: 0, y: 1, width: 13, height: 13), from: .zero, operation: .sourceOver, fraction: 1.0)
-
-            let center = NSPoint(x: totalWidth - height / 2, y: height / 2)
-            let ringRadius: CGFloat = 7
-            let ringWidth: CGFloat = 2.5
-
-            let bgRing = NSBezierPath()
-            bgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360, clockwise: true)
-            bgRing.lineWidth = ringWidth
-            NSColor.white.withAlphaComponent(0.25).setStroke()
-            bgRing.stroke()
-
-            if fraction > 0 {
-                let fgRing = NSBezierPath()
-                fgRing.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 360 * fraction, clockwise: true)
-                fgRing.lineWidth = ringWidth
-                fgRing.lineCapStyle = .round
-                NSColor.white.setStroke()
-                fgRing.stroke()
-            }
-
-            if count > 0 {
-                let text = "\(count)"
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 8, weight: .bold),
-                    .foregroundColor: NSColor.white
-                ]
-                let textSize = text.size(withAttributes: attrs)
-                text.draw(at: NSPoint(x: center.x - textSize.width / 2, y: center.y - textSize.height / 2), withAttributes: attrs)
-            }
-            return true
-        }
-        img.isTemplate = false
-        button.image = img
-        button.attributedTitle = NSAttributedString(string: "")
     }
 
     @objc private func onClipboardUpdate() {
@@ -120,7 +64,42 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let items = ClipboardManager.shared.items
         let count = items.count
         let appName = items.first?.sourceApp ?? ""
-        showPill(count: count, appName: appName)
+
+        pillWindow?.orderOut(nil)
+        pillTimer?.invalidate()
+
+        let pill = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 180, height: 36),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        pill.level = .floating + 1
+        pill.isOpaque = false
+        pill.backgroundColor = .clear
+        pill.hasShadow = true
+        pill.hidesOnDeactivate = false
+        pill.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        pill.isMovableByWindowBackground = false
+        pill.contentView = NSHostingView(rootView: PillView(count: count, appName: appName))
+
+        guard let screen = NSScreen.main else { return }
+        let screenW = screen.frame.width
+        let pillW: CGFloat = 180
+        let pillH: CGFloat = 36
+        let topOffset: CGFloat = 32
+
+        let x = (screenW - pillW) / 2
+        let y = screen.frame.height - topOffset - pillH
+
+        pill.setFrame(NSRect(x: x, y: y, width: pillW, height: pillH), display: true)
+        pill.orderFront(nil)
+        pillWindow = pill
+
+        pillTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.pillWindow?.orderOut(nil)
+            self?.pillWindow = nil
+        }
     }
 
     private func setupPanel() {
@@ -231,57 +210,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func removeMonitors() {
         if let m = mouseMonitor { NSEvent.removeMonitor(m); mouseMonitor = nil }
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
-    }
-
-    // MARK: - Pill Widget (Dynamic Island style)
-
-    private func setupPill() {
-        guard pillWindow == nil else { return }
-        let pill = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 180, height: 36),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        pill.level = .floating + 1
-        pill.isOpaque = false
-        pill.backgroundColor = .clear
-        pill.hasShadow = true
-        pill.hidesOnDeactivate = false
-        pill.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        pill.isMovableByWindowBackground = false
-        pill.contentView = NSHostingView(rootView: PillView())
-        pillWindow = pill
-    }
-
-    func showPill(count: Int, appName: String) {
-        setupPill()
-        guard let pill = pillWindow, let screen = NSScreen.main else { return }
-
-        let pillView = pill.contentView as? NSHostingView<PillView>
-        pillView?.rootView = PillView(count: count, appName: appName)
-
-        let screenW = screen.frame.width
-        let pillW: CGFloat = 180
-        let pillH: CGFloat = 36
-        let topOffset: CGFloat = 32
-
-        let x = (screenW - pillW) / 2
-        let y = screen.frame.height - topOffset - pillH
-
-        pill.setFrame(NSRect(x: x, y: y, width: pillW, height: pillH), display: true)
-        pill.orderFront(nil)
-
-        pillTimer?.invalidate()
-        pillTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.hidePill()
-        }
-    }
-
-    func hidePill() {
-        pillTimer?.invalidate()
-        pillTimer = nil
-        pillWindow?.orderOut(nil)
     }
 
     func showAccessibilityAlert() {
