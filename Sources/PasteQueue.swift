@@ -25,12 +25,12 @@ class PasteQueue: ObservableObject {
         }
         ClipboardManager.shared.syncLastFromPasteboard()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             let src = CGEventSource(stateID: .hidSystemState)
             let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
             keyDown?.flags = .maskCommand
             keyDown?.post(tap: .cghidEventTap)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
                 keyUp?.flags = .maskCommand
                 keyUp?.post(tap: .cghidEventTap)

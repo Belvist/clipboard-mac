@@ -115,24 +115,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setupPanel() {
         let contentView = ClipPopoverContent(onSelect: { [weak self] item in
             self?.hidePanel()
-            if let app = self?.previouslyActiveApp {
+
+            ClipboardManager.shared.copyToClipboard(item)
+
+            guard let app = self?.previouslyActiveApp else { return }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 app.activate(options: .activateIgnoringOtherApps)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    ClipboardManager.shared.copyToClipboard(item)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        let src = CGEventSource(stateID: .hidSystemState)
-                        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
-                        keyDown?.flags = .maskCommand
-                        keyDown?.post(tap: .cghidEventTap)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
-                            keyUp?.flags = .maskCommand
-                            keyUp?.post(tap: .cghidEventTap)
-                        }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let src = CGEventSource(stateID: .hidSystemState)
+                    let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
+                    keyDown?.flags = .maskCommand
+                    keyDown?.post(tap: .cghidEventTap)
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
+                        keyUp?.flags = .maskCommand
+                        keyUp?.post(tap: .cghidEventTap)
                     }
                 }
-            } else {
-                ClipboardManager.shared.copyToClipboard(item)
             }
         }, onDismiss: { [weak self] in
             self?.hidePanel()
@@ -228,7 +230,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.addButton(withTitle: L10n.shared.tr("acc_later"))
         alert.alertStyle = .warning
         if alert.runModal() == .alertFirstButtonReturn {
-            requestAccessibility()
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            NSWorkspace.shared.open(url)
         }
     }
 }
