@@ -171,19 +171,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showPanel() {
-        guard let p = panel else { return }
+        guard let p = panel, let screen = NSScreen.main else { return }
 
-        let cursor = NSEvent.mouseLocation
-        let screenW = NSScreen.main?.frame.width ?? 800
         let panelW: CGFloat = 400
         let panelH: CGFloat = 520
+        let screenW = screen.frame.width
+        let topOffset: CGFloat = 28
 
-        var x = cursor.x - panelW / 2
-        var y = cursor.y - panelH - 10
-
-        if x < 8 { x = 8 }
-        if x + panelW > screenW - 8 { x = screenW - panelW - 8 }
-        if y < 8 { y = cursor.y + 20 }
+        let x = (screenW - panelW) / 2
+        let y = screen.frame.height - topOffset - panelH
 
         p.setFrameOrigin(NSPoint(x: x, y: y))
         p.orderFront(nil)
