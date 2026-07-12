@@ -7,7 +7,9 @@ class ClipboardManager: ObservableObject {
 
     private var timer: Timer?
     private var lastContent: String = ""
-    private var lastImageData: Data?
+    private var lastImageHash: Int = 0
+    private var lastPasteboardChangeCount: Int = 0
+    private var saveTimer: Timer?
     let maxItems = 25
 
     var storageURL: URL = {
@@ -20,8 +22,8 @@ class ClipboardManager: ObservableObject {
     init() { load() }
 
     func startMonitoring() {
-        checkClipboard()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        lastPasteboardChangeCount = NSPasteboard.general.changeCount
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.checkClipboard()
         }
     }
@@ -34,11 +36,14 @@ class ClipboardManager: ObservableObject {
 
     private func checkClipboard() {
         let pb = NSPasteboard.general
+        guard pb.changeCount != lastPasteboardChangeCount else { return }
+        lastPasteboardChangeCount = pb.changeCount
 
         if let image_data = pb.data(forType: .tiff),
            let image = NSImage(data: image_data) {
-            if image_data != lastImageData {
-                lastImageData = image_data
+            let hash = image_data.prefix(2048).hashValue &+ image_data.count.hashValue
+            if hash != lastImageHash {
+                lastImageHash = hash
                 lastContent = ""
                 let frontApp = NSWorkspace.shared.frontmostApplication
                 let appName = frontApp?.localizedName ?? "Unknown"
@@ -64,10 +69,13 @@ class ClipboardManager: ObservableObject {
                     if self.items.count > self.maxItems {
                         self.items = Array(self.items.prefix(self.maxItems))
                     }
-                    self.save()
+                    self.debounceSave()
                     NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
                 }
             }
+            return
+        } else {
+            lastImageHash = 0
         }
 
         if let content = pb.string(forType: .string),
@@ -95,7 +103,7 @@ class ClipboardManager: ObservableObject {
                 if self.items.count > self.maxItems {
                     self.items = Array(self.items.prefix(self.maxItems))
                 }
-                self.save()
+                self.debounceSave()
                 NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
             }
         }
@@ -115,12 +123,13 @@ class ClipboardManager: ObservableObject {
 
     func syncLastFromPasteboard() {
         let pb = NSPasteboard.general
+        lastPasteboardChangeCount = pb.changeCount
         if let tiffData = pb.data(forType: .tiff) {
-            lastImageData = tiffData
+            lastImageHash = tiffData.prefix(2048).hashValue &+ tiffData.count.hashValue
             lastContent = ""
         } else if let content = pb.string(forType: .string), !content.isEmpty {
             lastContent = content
-            lastImageData = nil
+            lastImageHash = 0
         }
     }
 
@@ -147,6 +156,13 @@ class ClipboardManager: ObservableObject {
 
     var projects: [String] {
         Array(Set(items.map { $0.projectTag })).sorted()
+    }
+
+    private func debounceSave() {
+        saveTimer?.invalidate()
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            self?.save()
+        }
     }
 
     private func save() {
