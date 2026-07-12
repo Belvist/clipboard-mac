@@ -14,7 +14,7 @@ struct ClipHistoryApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var panel: NSPanel?
-    private var pillWindow: NSPanel?
+    private var pillWindow: NSWindow?
     private var pillTimer: Timer?
     private var previouslyActiveApp: NSRunningApplication?
     private var mouseMonitor: Any?
@@ -68,19 +68,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pillWindow?.orderOut(nil)
         pillTimer?.invalidate()
 
-        let pill = NSPanel(
+        let pill = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 180, height: 36),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        pill.level = .floating + 1
+        pill.level = .floating
         pill.isOpaque = false
         pill.backgroundColor = .clear
         pill.hasShadow = true
-        pill.hidesOnDeactivate = false
-        pill.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        pill.isMovableByWindowBackground = false
+        pill.isReleasedWhenClosed = false
         pill.contentView = NSHostingView(rootView: PillView(count: count, appName: appName))
 
         guard let screen = NSScreen.main else { return }
