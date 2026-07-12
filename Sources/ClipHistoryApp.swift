@@ -14,6 +14,8 @@ struct ClipHistoryApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var panel: NSPanel?
+    private var pillWindow: NSPanel?
+    private var pillTimer: Timer?
     private var previouslyActiveApp: NSRunningApplication?
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
@@ -27,6 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         HotKeyManager.shared.register()
 
         NotificationCenter.default.addObserver(self, selector: #selector(toggleWindow), name: .toggleClipWindow, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onClipboardUpdate), name: .clipboardUpdated, object: nil)
 
         if !checkAccessibility() {
             let launchedBefore = UserDefaults.standard.bool(forKey: "hasLaunched")
@@ -112,6 +115,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.attributedTitle = NSAttributedString(string: "")
     }
 
+    @objc private func onClipboardUpdate() {
+        guard panel?.isVisible != true else { return }
+        let items = ClipboardManager.shared.items
+        let count = items.count
+        let appName = items.first?.sourceApp ?? ""
+        showPill(count: count, appName: appName)
+    }
+
     private func setupPanel() {
         let contentView = ClipPopoverContent(onSelect: { [weak self] item in
             self?.hidePanel()
@@ -171,15 +182,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showPanel() {
-        guard let p = panel, let screen = NSScreen.main else { return }
+        guard let p = panel else { return }
 
+        let cursor = NSEvent.mouseLocation
+        let screenW = NSScreen.main?.frame.width ?? 800
         let panelW: CGFloat = 400
         let panelH: CGFloat = 520
-        let screenW = screen.frame.width
-        let topOffset: CGFloat = 28
 
-        let x = (screenW - panelW) / 2
-        let y = screen.frame.height - topOffset - panelH
+        var x = cursor.x - panelW / 2
+        var y = cursor.y - panelH - 10
+
+        if x < 8 { x = 8 }
+        if x + panelW > screenW - 8 { x = screenW - panelW - 8 }
+        if y < 8 { y = cursor.y + 20 }
 
         p.setFrameOrigin(NSPoint(x: x, y: y))
         p.orderFront(nil)
@@ -218,6 +233,57 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
     }
 
+    // MARK: - Pill Widget (Dynamic Island style)
+
+    private func setupPill() {
+        guard pillWindow == nil else { return }
+        let pill = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 180, height: 36),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        pill.level = .floating + 1
+        pill.isOpaque = false
+        pill.backgroundColor = .clear
+        pill.hasShadow = true
+        pill.hidesOnDeactivate = false
+        pill.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        pill.isMovableByWindowBackground = false
+        pill.contentView = NSHostingView(rootView: PillView())
+        pillWindow = pill
+    }
+
+    func showPill(count: Int, appName: String) {
+        setupPill()
+        guard let pill = pillWindow, let screen = NSScreen.main else { return }
+
+        let pillView = pill.contentView as? NSHostingView<PillView>
+        pillView?.rootView = PillView(count: count, appName: appName)
+
+        let screenW = screen.frame.width
+        let pillW: CGFloat = 180
+        let pillH: CGFloat = 36
+        let topOffset: CGFloat = 32
+
+        let x = (screenW - pillW) / 2
+        let y = screen.frame.height - topOffset - pillH
+
+        pill.setFrame(NSRect(x: x, y: y, width: pillW, height: pillH), display: true)
+        pill.orderFront(nil)
+
+        pillTimer?.invalidate()
+        pillTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.hidePill()
+        }
+    }
+
+    func hidePill() {
+        pillTimer?.invalidate()
+        pillTimer = nil
+        pillWindow?.orderOut(nil)
+    }
+
     func showAccessibilityAlert() {
         let alert = NSAlert()
         alert.messageText = L10n.shared.tr("acc_title")
@@ -229,5 +295,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+// MARK: - Pill View (Dynamic Island style)
+
+struct PillView: View {
+    var count: Int = 0
+    var appName: String = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white)
+
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            }
+
+            if !appName.isEmpty {
+                Text(appName)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        )
     }
 }
