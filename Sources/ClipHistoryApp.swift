@@ -126,24 +126,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard panel?.isVisible != true else { return }
 
         notchHost?.rootView = NotchPanelView(count: count)
-        positionNotchPanel()
-        notchPanel?.alphaValue = 0
-        notchPanel?.orderFrontRegardless()
 
-        notchHost?.layer?.transform = CATransform3DMakeScale(0.7, 0.7, 1)
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
+        let g = notchGeometry(for: screen)
 
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.3)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
-        notchPanel?.animator().alphaValue = 1
-        CATransaction.commit()
+        let spring = CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1)
+
+        let notchRect = NSRect(x: g.notchX, y: g.pillY, width: g.notchW, height: g.pillH)
+        let pillRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
+
+        p.setFrame(notchRect, display: false)
+        notchHost?.frame = NSRect(x: 0, y: 0, width: g.notchW, height: g.pillH)
+        notchHost?.layer?.transform = CATransform3DMakeScale(0.6, 0.6, 1)
+        p.alphaValue = 0
+        p.orderFrontRegardless()
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.45
+            ctx.timingFunction = spring
+            ctx.allowsImplicitAnimation = true
+            p.animator().setFrame(pillRect, display: true)
+            p.animator().alphaValue = 1
+        }
 
         if let layer = notchHost?.layer {
             let scale = CABasicAnimation(keyPath: "transform.scale")
-            scale.fromValue = 0.7
+            scale.fromValue = 0.6
             scale.toValue = 1.0
-            scale.duration = 0.42
-            scale.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1)
+            scale.duration = 0.5
+            scale.timingFunction = spring
             layer.add(scale, forKey: "scaleIn")
             layer.transform = CATransform3DIdentity
         }
@@ -151,26 +162,83 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         scheduleHide()
     }
 
-    private func fadeNotch(to alpha: CGFloat) {
-        guard let pw = notchPanel else { return }
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.25)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
-        pw.animator().alphaValue = alpha
-        CATransaction.commit()
+    private func collapseNotch() {
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
+        guard p.alphaValue > 0 else { return }
+        let g = notchGeometry(for: screen)
+
+        let spring = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.6, 1)
+        let notchRect = NSRect(x: g.notchX, y: g.pillY, width: g.notchW, height: g.pillH)
+
+        if let layer = notchHost?.layer {
+            let scale = CABasicAnimation(keyPath: "transform.scale")
+            scale.fromValue = 1.0
+            scale.toValue = 0.6
+            scale.duration = 0.3
+            scale.timingFunction = spring
+            scale.fillMode = .forwards
+            scale.isRemovedOnCompletion = false
+            layer.add(scale, forKey: "scaleOut")
+        }
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.3
+            ctx.timingFunction = spring
+            p.animator().setFrame(notchRect, display: true)
+            p.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            p.orderOut(nil)
+            p.alphaValue = 0
+            self?.notchHost?.layer?.removeAllAnimations()
+            self?.notchHost?.layer?.transform = CATransform3DIdentity
+            self?.notchHost?.frame = NSRect(x: 0, y: 0, width: g.notchW, height: g.pillH)
+        })
     }
 
     private func scheduleHide() {
         notchTimer?.invalidate()
         notchTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
-            self?.fadeNotch(to: 0)
+            self?.collapseNotch()
         }
     }
 
     @objc private func notchEntered() {
         guard panel?.isVisible != true else { return }
         notchTimer?.invalidate()
-        fadeNotch(to: 1)
+
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
+        let g = notchGeometry(for: screen)
+
+        if p.alphaValue < 1 {
+            let spring = CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1)
+            let pillRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
+
+            if p.alphaValue == 0 {
+                p.setFrame(NSRect(x: g.notchX, y: g.pillY, width: g.notchW, height: g.pillH), display: false)
+                notchHost?.frame = NSRect(x: 0, y: 0, width: g.notchW, height: g.pillH)
+                notchHost?.layer?.transform = CATransform3DMakeScale(0.6, 0.6, 1)
+            }
+
+            p.orderFrontRegardless()
+
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.4
+                ctx.timingFunction = spring
+                ctx.allowsImplicitAnimation = true
+                p.animator().setFrame(pillRect, display: true)
+                p.animator().alphaValue = 1
+            }
+
+            if let layer = notchHost?.layer {
+                let scale = CABasicAnimation(keyPath: "transform.scale")
+                scale.fromValue = 0.6
+                scale.toValue = 1.0
+                scale.duration = 0.45
+                scale.timingFunction = spring
+                layer.add(scale, forKey: "scaleHover")
+                layer.transform = CATransform3DIdentity
+            }
+        }
     }
 
     @objc private func notchExited() {
@@ -179,8 +247,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func notchClicked() {
         notchTimer?.invalidate()
-        fadeNotch(to: 0)
-        toggleWindow()
+        collapseNotch()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.toggleWindow()
+        }
     }
 
     private func setupPanel() {
