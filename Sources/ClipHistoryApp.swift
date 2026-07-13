@@ -132,32 +132,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let spring = CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1)
 
-        let notchRect = NSRect(x: g.notchX, y: g.pillY, width: g.notchW, height: g.pillH)
-        let pillRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
-
-        p.setFrame(notchRect, display: false)
-        notchHost?.frame = NSRect(x: 0, y: 0, width: g.notchW, height: g.pillH)
-        notchHost?.layer?.transform = CATransform3DMakeScale(0.6, 0.6, 1)
-        p.alphaValue = 0
+        p.setFrame(NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH), display: false)
+        notchHost?.frame = NSRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+        notchHost?.layer?.transform = CATransform3DIdentity
+        p.alphaValue = 1
         p.orderFrontRegardless()
 
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.45
-            ctx.timingFunction = spring
-            ctx.allowsImplicitAnimation = true
-            p.animator().setFrame(pillRect, display: true)
-            p.animator().alphaValue = 1
-        }
+        let hostLayer = notchHost?.layer
+        let maskLayer = hostLayer?.mask as? CAShapeLayer ?? CAShapeLayer()
 
-        if let layer = notchHost?.layer {
+        let notchCenterX = g.notchX + g.notchW / 2 - g.pillX
+        let notchCenterY = g.pillH / 2
+
+        let collapsedRect = CGRect(x: notchCenterX - g.notchW / 2, y: 0, width: g.notchW, height: g.pillH)
+        let expandedRect = CGRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+
+        maskLayer.path = roundedRectPath(collapsedRect, cornerRadius: g.pillH / 2)
+        hostLayer?.mask = maskLayer
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.45)
+        CATransaction.setAnimationTimingFunction(spring)
+
+        let pathAnim = CABasicAnimation(keyPath: "path")
+        pathAnim.fromValue = roundedRectPath(collapsedRect, cornerRadius: g.pillH / 2)
+        pathAnim.toValue = roundedRectPath(expandedRect, cornerRadius: 14)
+        maskLayer.add(pathAnim, forKey: "expand")
+        maskLayer.path = roundedRectPath(expandedRect, cornerRadius: 14)
+
+        if let layer = hostLayer {
             let scale = CABasicAnimation(keyPath: "transform.scale")
-            scale.fromValue = 0.6
+            scale.fromValue = 0.8
             scale.toValue = 1.0
-            scale.duration = 0.5
+            scale.duration = 0.45
             scale.timingFunction = spring
             layer.add(scale, forKey: "scaleIn")
             layer.transform = CATransform3DIdentity
         }
+
+        CATransaction.commit()
 
         scheduleHide()
     }
@@ -167,32 +180,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard p.alphaValue > 0 else { return }
         let g = notchGeometry(for: screen)
 
-        let spring = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.6, 1)
-        let notchRect = NSRect(x: g.notchX, y: g.pillY, width: g.notchW, height: g.pillH)
+        let easeIn = CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
 
-        if let layer = notchHost?.layer {
+        let hostLayer = notchHost?.layer
+        let maskLayer = hostLayer?.mask as? CAShapeLayer
+
+        let notchCenterX = g.notchX + g.notchW / 2 - g.pillX
+        let collapsedRect = CGRect(x: notchCenterX - g.notchW / 2, y: 0, width: g.notchW, height: g.pillH)
+        let expandedRect = CGRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.35)
+        CATransaction.setAnimationTimingFunction(easeIn)
+        CATransaction.setCompletionBlock { [weak self] in
+            p.alphaValue = 0
+            p.orderOut(nil)
+            self?.notchHost?.layer?.mask = nil
+            self?.notchHost?.layer?.removeAllAnimations()
+            self?.notchHost?.layer?.transform = CATransform3DIdentity
+        }
+
+        if let mask = maskLayer {
+            let pathAnim = CABasicAnimation(keyPath: "path")
+            pathAnim.fromValue = roundedRectPath(expandedRect, cornerRadius: 14)
+            pathAnim.toValue = roundedRectPath(collapsedRect, cornerRadius: g.pillH / 2)
+            mask.add(pathAnim, forKey: "collapse")
+            mask.path = roundedRectPath(collapsedRect, cornerRadius: g.pillH / 2)
+        }
+
+        if let layer = hostLayer {
             let scale = CABasicAnimation(keyPath: "transform.scale")
             scale.fromValue = 1.0
-            scale.toValue = 0.6
-            scale.duration = 0.3
-            scale.timingFunction = spring
-            scale.fillMode = .forwards
-            scale.isRemovedOnCompletion = false
+            scale.toValue = 0.8
+            scale.duration = 0.35
+            scale.timingFunction = easeIn
             layer.add(scale, forKey: "scaleOut")
         }
 
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.3
-            ctx.timingFunction = spring
-            p.animator().setFrame(notchRect, display: true)
-            p.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            p.orderOut(nil)
-            p.alphaValue = 0
-            self?.notchHost?.layer?.removeAllAnimations()
-            self?.notchHost?.layer?.transform = CATransform3DIdentity
-            self?.notchHost?.frame = NSRect(x: 0, y: 0, width: g.notchW, height: g.pillH)
-        })
+        let fadeAnim = CABasicAnimation(keyPath: "opacity")
+        fadeAnim.fromValue = 1
+        fadeAnim.toValue = 0
+        fadeAnim.beginTime = CACurrentMediaTime() + 0.15
+        fadeAnim.fillMode = .forwards
+        fadeAnim.isRemovedOnCompletion = false
+        fadeAnim.duration = 0.2
+        hostLayer?.add(fadeAnim, forKey: "fadeOut")
+
+        CATransaction.commit()
     }
 
     private func scheduleHide() {
@@ -211,33 +245,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         if p.alphaValue < 1 {
             let spring = CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1)
-            let pillRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
 
-            if p.alphaValue == 0 {
-                p.setFrame(NSRect(x: g.notchX, y: g.pillY, width: g.notchW, height: g.pillH), display: false)
-                notchHost?.frame = NSRect(x: 0, y: 0, width: g.notchW, height: g.pillH)
-                notchHost?.layer?.transform = CATransform3DMakeScale(0.6, 0.6, 1)
-            }
+            p.setFrame(NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH), display: false)
+            notchHost?.frame = NSRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+            notchHost?.layer?.removeAllAnimations()
+            notchHost?.layer?.transform = CATransform3DIdentity
+
+            let hostLayer = notchHost?.layer
+            let maskLayer = CAShapeLayer()
+
+            let notchCenterX = g.notchX + g.notchW / 2 - g.pillX
+            let collapsedRect = CGRect(x: notchCenterX - g.notchW / 2, y: 0, width: g.notchW, height: g.pillH)
+            let expandedRect = CGRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+
+            maskLayer.path = roundedRectPath(collapsedRect, cornerRadius: g.pillH / 2)
+            hostLayer?.mask = maskLayer
 
             p.orderFrontRegardless()
 
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.4
-                ctx.timingFunction = spring
-                ctx.allowsImplicitAnimation = true
-                p.animator().setFrame(pillRect, display: true)
-                p.animator().alphaValue = 1
-            }
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.4)
+            CATransaction.setAnimationTimingFunction(spring)
 
-            if let layer = notchHost?.layer {
+            let pathAnim = CABasicAnimation(keyPath: "path")
+            pathAnim.fromValue = roundedRectPath(collapsedRect, cornerRadius: g.pillH / 2)
+            pathAnim.toValue = roundedRectPath(expandedRect, cornerRadius: 14)
+            maskLayer.add(pathAnim, forKey: "expandHover")
+            maskLayer.path = roundedRectPath(expandedRect, cornerRadius: 14)
+
+            let fadeAnim = CABasicAnimation(keyPath: "opacity")
+            fadeAnim.fromValue = p.alphaValue
+            fadeAnim.toValue = 1
+            fadeAnim.duration = 0.3
+            hostLayer?.add(fadeAnim, forKey: "fadeInHover")
+            hostLayer?.opacity = 1
+            p.alphaValue = 1
+
+            if let layer = hostLayer {
                 let scale = CABasicAnimation(keyPath: "transform.scale")
-                scale.fromValue = 0.6
+                scale.fromValue = 0.8
                 scale.toValue = 1.0
-                scale.duration = 0.45
+                scale.duration = 0.4
                 scale.timingFunction = spring
                 layer.add(scale, forKey: "scaleHover")
                 layer.transform = CATransform3DIdentity
             }
+
+            CATransaction.commit()
         }
     }
 
@@ -405,6 +459,11 @@ struct NotchShape: Shape {
         p.closeSubpath()
         return p
     }
+}
+
+private func roundedRectPath(_ rect: CGRect, cornerRadius r: CGFloat) -> CGPath {
+    let path = CGPath(roundedRect: rect, cornerWidth: r, cornerHeight: r, transform: nil)
+    return path
 }
 
 struct NotchPanelView: View {
