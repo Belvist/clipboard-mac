@@ -322,8 +322,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let hosting = NSHostingController(rootView: contentView.environmentObject(L10n.shared))
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 520),
-            styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow, .utilityWindow],
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 500),
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -331,7 +331,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.isOpaque = false
         p.backgroundColor = .clear
         p.titleVisibility = .hidden
-        p.titlebarAppearsTransparent = true
         p.hidesOnDeactivate = false
         p.isMovableByWindowBackground = true
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
