@@ -14,16 +14,18 @@ struct ClipHistoryApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var panel: NSPanel?
-    private var pillWindow: NSWindow?
-    private var pillTimer: Timer?
+    private var notchPanel: NSPanel?
+    private var notchHost: NotchHostView?
+    private var notchTimer: Timer?
     private var previouslyActiveApp: NSRunningApplication?
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
         UpdateChecker.shared.restoreBackupIfNeeded()
         setupStatusItem()
+        setupNotchPanel()
         setupPanel()
         ClipboardManager.shared.startMonitoring()
         HotKeyManager.shared.register()
@@ -59,45 +61,126 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    @objc private func onClipboardUpdate() {
-        guard panel?.isVisible != true else { return }
-        let items = ClipboardManager.shared.items
-        let count = items.count
-        let appName = items.first?.sourceApp ?? ""
+    private func setupNotchPanel() {
+        let host = NotchHostView(rootView: NotchPanelView(count: 0))
+        host.onEntered = { [weak self] in self?.notchEntered() }
+        host.onExited = { [weak self] in self?.notchExited() }
 
-        pillWindow?.orderOut(nil)
-        pillTimer?.invalidate()
-
-        let pill = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 180, height: 36),
+        let p = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 38),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        pill.level = .floating
-        pill.isOpaque = false
-        pill.backgroundColor = .clear
-        pill.hasShadow = true
-        pill.isReleasedWhenClosed = false
-        pill.contentView = NSHostingView(rootView: PillView(count: count, appName: appName))
+        p.level = .screenSaver
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hidesOnDeactivate = false
+        p.isMovableByWindowBackground = false
+        p.isReleasedWhenClosed = false
+        p.hasShadow = false
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        host.wantsLayer = true
+        host.frame = NSRect(x: 0, y: 0, width: 300, height: 38)
+        p.contentView = host
+        p.alphaValue = 0
+        p.orderFrontRegardless()
+        notchPanel = p
+        notchHost = host
 
-        guard let screen = NSScreen.main else { return }
-        let screenW = screen.frame.width
-        let pillW: CGFloat = 180
-        let pillH: CGFloat = 36
-        let topOffset: CGFloat = 32
+        let ta = NSTrackingArea(
+            rect: host.bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: host, userInfo: nil
+        )
+        host.addTrackingArea(ta)
+    }
 
-        let x = (screenW - pillW) / 2
-        let y = screen.frame.height - topOffset - pillH
+    private func notchGeometry(for screen: NSScreen) -> (notchX: CGFloat, notchW: CGFloat, pillX: CGFloat, pillW: CGFloat, pillH: CGFloat, pillY: CGFloat) {
+        let sf = screen.frame
+        let vf = screen.visibleFrame
+        let menuBarH = sf.maxY - vf.maxY
+        let screenW = sf.width
 
-        pill.setFrame(NSRect(x: x, y: y, width: pillW, height: pillH), display: true)
-        pill.orderFront(nil)
-        pillWindow = pill
+        let hasNotch = menuBarH > 30
+        let notchW: CGFloat = hasNotch ? screenW * 0.11 : 0
+        let contentMargin: CGFloat = 55
+        let pillW = hasNotch ? max(240, notchW + contentMargin * 2) : 200
+        let pillH = max(menuBarH, 28)
+        let pillX = sf.midX - pillW / 2
+        let pillY = sf.maxY - pillH
+        let notchX = sf.midX - notchW / 2
+        return (notchX, notchW, pillX, pillW, pillH, pillY)
+    }
 
-        pillTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.pillWindow?.orderOut(nil)
-            self?.pillWindow = nil
+    private func positionNotchPanel() {
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
+        let g = notchGeometry(for: screen)
+        p.setFrame(NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH), display: true)
+        notchHost?.frame = NSRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+    }
+
+    @objc private func onClipboardUpdate() {
+        let count = ClipboardManager.shared.items.count
+
+        guard panel?.isVisible != true else { return }
+
+        notchHost?.rootView = NotchPanelView(count: count)
+        positionNotchPanel()
+        notchPanel?.alphaValue = 0
+        notchPanel?.orderFrontRegardless()
+
+        notchHost?.layer?.transform = CATransform3DMakeScale(0.7, 0.7, 1)
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.3)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        notchPanel?.animator().alphaValue = 1
+        CATransaction.commit()
+
+        if let layer = notchHost?.layer {
+            let scale = CABasicAnimation(keyPath: "transform.scale")
+            scale.fromValue = 0.7
+            scale.toValue = 1.0
+            scale.duration = 0.42
+            scale.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1)
+            layer.add(scale, forKey: "scaleIn")
+            layer.transform = CATransform3DIdentity
         }
+
+        scheduleHide()
+    }
+
+    private func fadeNotch(to alpha: CGFloat) {
+        guard let pw = notchPanel else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.25)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        pw.animator().alphaValue = alpha
+        CATransaction.commit()
+    }
+
+    private func scheduleHide() {
+        notchTimer?.invalidate()
+        notchTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+            self?.fadeNotch(to: 0)
+        }
+    }
+
+    @objc private func notchEntered() {
+        guard panel?.isVisible != true else { return }
+        notchTimer?.invalidate()
+        fadeNotch(to: 1)
+    }
+
+    @objc private func notchExited() {
+        scheduleHide()
+    }
+
+    @objc private func notchClicked() {
+        notchTimer?.invalidate()
+        fadeNotch(to: 0)
+        toggleWindow()
     }
 
     private func setupPanel() {
@@ -224,37 +307,66 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 }
 
-// MARK: - Pill View (Dynamic Island style)
+// MARK: - Notch Panel (Dynamic Island style)
 
-struct PillView: View {
+class NotchHostView: NSHostingView<NotchPanelView> {
+    var onEntered: (() -> Void)?
+    var onExited: (() -> Void)?
+
+    override func mouseEntered(with event: NSEvent) { onEntered?() }
+    override func mouseExited(with event: NSEvent) { onExited?() }
+}
+
+struct NotchShape: Shape {
+    var cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(cornerRadius, rect.height / 2, rect.width / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY),
+                      control: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - r),
+                      control: CGPoint(x: rect.minX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+struct NotchPanelView: View {
     var count: Int = 0
-    var appName: String = ""
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-
-            if count > 0 {
-                Text("\(count)")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+        ZStack {
+            HStack {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white)
+                    .padding(.leading, 16)
+                Spacer()
             }
 
-            if !appName.isEmpty {
-                Text(appName)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(1)
+            HStack {
+                Spacer()
+                if count > 0 {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                            .frame(width: 18, height: 18)
+                        Text("\(count)")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.trailing, 18)
+                }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(NotchShape(cornerRadius: 14).fill(Color.black))
+        .clipShape(NotchShape(cornerRadius: 14))
     }
 }

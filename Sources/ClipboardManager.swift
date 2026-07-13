@@ -70,6 +70,7 @@ class ClipboardManager: ObservableObject {
                         self.items = Array(self.items.prefix(self.maxItems))
                     }
                     self.debounceSave()
+                    NSLog("[ClipHistory] posting clipboardUpdated (image)")
                     NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
                 }
             }
@@ -176,7 +177,6 @@ class ClipboardManager: ObservableObject {
         guard let data = try? Data(contentsOf: storageURL) else { return }
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
-        items = ((try? dec.decode([ClipItem].self, from: data)) ?? []).filter { $0.contentType != .image }
-        save()
+        items = (try? dec.decode([ClipItem].self, from: data)) ?? []
     }
 }
