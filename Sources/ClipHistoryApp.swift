@@ -17,6 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var notchPanel: NSPanel?
     private var notchHost: NotchHostView?
     private var notchTimer: Timer?
+    private var notchExpanded = false
     private var previouslyActiveApp: NSRunningApplication?
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
@@ -189,6 +190,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         CATransaction.commit()
 
+        notchExpanded = true
         scheduleHide()
     }
 
@@ -196,6 +198,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let screen = NSScreen.main, let p = notchPanel else { return }
         guard p.alphaValue > 0.01 else { return }
         let g = notchGeometry(for: screen)
+
+        notchExpanded = false
 
         let hostLayer = notchHost?.layer
         let maskLayer = hostLayer?.mask as? CAShapeLayer
@@ -242,6 +246,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func notchEntered() {
         guard panel?.isVisible != true else { return }
+        guard !notchExpanded else { return }
         notchTimer?.invalidate()
 
         guard let screen = NSScreen.main, let p = notchPanel else { return }
@@ -271,6 +276,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         maskLayer.path = expanded
 
         CATransaction.commit()
+
+        notchExpanded = true
     }
 
     @objc private func notchExited() {
