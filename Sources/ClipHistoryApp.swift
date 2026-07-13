@@ -194,7 +194,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func collapseNotch() {
         guard let screen = NSScreen.main, let p = notchPanel else { return }
-        guard p.alphaValue > 0 else { return }
+        guard p.alphaValue > 0.01 else { return }
         let g = notchGeometry(for: screen)
 
         let hostLayer = notchHost?.layer
@@ -206,8 +206,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.3)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1))
-        CATransaction.setCompletionBlock { [weak self] in
-            p.alphaValue = 0
+        CATransaction.setCompletionBlock {
+            p.alphaValue = 0.01
             hostLayer?.mask = nil
             hostLayer?.removeAllAnimations()
             hostLayer?.opacity = 1
@@ -417,6 +417,17 @@ class NotchHostView: NSHostingView<NotchPanelView> {
 
     override func mouseEntered(with event: NSEvent) { onEntered?() }
     override func mouseExited(with event: NSEvent) { onExited?() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for ta in trackingAreas { removeTrackingArea(ta) }
+        let ta = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil
+        )
+        addTrackingArea(ta)
+    }
 }
 
 struct NotchShape: Shape {
