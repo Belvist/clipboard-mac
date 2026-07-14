@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
     private var clipboardWaveTimer: Timer?
+    private var lastToggleTime: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -421,6 +422,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func toggleWindow() {
         guard let p = panel else { return }
+        let now = Date()
+        if let last = lastToggleTime, now.timeIntervalSince(last) < 0.4 { return }
+        lastToggleTime = now
         if p.isVisible {
             hidePanel()
         } else {
