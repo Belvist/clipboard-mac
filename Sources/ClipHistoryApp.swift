@@ -328,7 +328,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1))
         CATransaction.setCompletionBlock { [weak self] in
             guard let self = self, self.state == .hidden else { return }
-            p.alphaValue = 0.01
+            p.alphaValue = 0
             hostLayer?.mask = nil
             hostLayer?.removeAllAnimations()
             hostLayer?.opacity = 1
