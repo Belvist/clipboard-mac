@@ -39,7 +39,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var keyMonitor: Any?
     private var clipboardWaveTimer: Timer?
     private var lastToggleTime: Date?
-    private var idleMonitor: Timer?
+    private var hoverMonitor: Timer?
+    private var hoverInside = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -54,6 +55,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(toggleWindow), name: .toggleClipWindow, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onClipboardUpdate), name: .clipboardUpdated, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onMusicChanged), name: .musicStateChanged, object: nil)
+
+        startHoverMonitor()
 
         if !checkAccessibility() {
             let launchedBefore = UserDefaults.standard.bool(forKey: "hasLaunched")
@@ -86,8 +89,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func setupNotchPanel() {
         let host = NotchHostView(rootView: NotchPanelView(count: 0))
-        host.onEntered = { [weak self] in self?.notchEntered() }
-        host.onExited = { [weak self] in self?.notchExited() }
         host.onClicked = { [weak self] in self?.notchClicked() }
 
         let p = NSPanel(
@@ -111,13 +112,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.orderFrontRegardless()
         notchPanel = p
         notchHost = host
-
-        let ta = NSTrackingArea(
-            rect: host.bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: host, userInfo: nil
-        )
-        host.addTrackingArea(ta)
     }
 
     private func notchGeometry(for screen: NSScreen) -> (notchX: CGFloat, notchW: CGFloat, pillX: CGFloat, pillW: CGFloat, pillH: CGFloat, pillY: CGFloat) {
@@ -175,12 +169,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func stateDidChange(from oldState: NotchUIState) {
-        if state == .hidden {
-            installIdleMonitor()
-        } else {
-            removeIdleMonitor()
-        }
-
         switch (oldState, state) {
         case (_, .hidden):
             collapseNotchVisual()
@@ -220,10 +208,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         positionNotchPanel()
         if !notchExpanded {
             animateNotchExpand(g: g)
+            notchExpanded = true
         }
         p.alphaValue = 1
         p.orderFrontRegardless()
-        notchExpanded = true
     }
 
     private func updatePillView(clipboardWave: Bool) {
@@ -269,10 +257,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func scheduleHideIfNeeded() {
         switch state {
-        case .hidden, .musicExpanded:
+        case .hidden, .musicExpanded, .clipboardPill:
             break
-        case .clipboardPill, .clipboardWave:
-            scheduleHide(delay: state == .clipboardWave ? 4.0 : 10.0)
+        case .clipboardWave:
+            scheduleHide(delay: 4.0)
         case .musicPill:
             if !MediaRemoteHelper.shared.isPlaying {
                 scheduleHide(delay: 4.0)
@@ -288,10 +276,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             updatePillView(clipboardWave: true)
             positionNotchPanel()
             state = .clipboardWave
-            let alreadyVisible = state != .hidden && notchPanel?.alphaValue ?? 0 > 0.5
-            if !alreadyVisible {
-                showNotch(animated: true)
-            }
         }
         clipboardWaveTimer?.invalidate()
         clipboardWaveTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
@@ -328,10 +312,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1))
         CATransaction.setCompletionBlock { [weak self] in
             guard let self = self, self.state == .hidden else { return }
+            hostLayer?.opacity = 0
             p.alphaValue = 0
             hostLayer?.mask = nil
             hostLayer?.removeAllAnimations()
-            hostLayer?.opacity = 1
         }
 
         if let mask = maskLayer {
@@ -362,29 +346,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func installIdleMonitor() {
-        idleMonitor?.invalidate()
-        idleMonitor = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            guard let self = self, self.state == .hidden else { return }
-            guard let screen = NSScreen.main else { return }
-            let g = self.notchGeometry(for: screen)
-            let loc = NSEvent.mouseLocation
-            let notchRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
-            if notchRect.contains(loc) {
-                self.notchEntered()
-            }
+    private func startHoverMonitor() {
+        hoverMonitor?.invalidate()
+        hoverInside = false
+        hoverMonitor = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            self?.checkHover()
         }
     }
 
-    private func removeIdleMonitor() {
-        idleMonitor?.invalidate()
-        idleMonitor = nil
+    private func checkHover() {
+        guard let screen = NSScreen.main else { return }
+        guard state != .musicExpanded else {
+            hoverInside = false
+            return
+        }
+
+        let g = notchGeometry(for: screen)
+        let loc = NSEvent.mouseLocation
+        let notchRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
+        let inside = notchRect.contains(loc)
+
+        if inside && !hoverInside {
+            hoverInside = true
+            hoverEntered()
+        } else if !inside && hoverInside {
+            hoverInside = false
+            hoverExited()
+        }
     }
 
-    @objc private func notchEntered() {
+    private func hoverEntered() {
         guard panel?.isVisible != true else { return }
-        guard !notchExpanded else { return }
-        guard state != .musicExpanded else { return }
         notchTimer?.invalidate()
 
         if state == .hidden {
@@ -392,9 +384,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
+        guard !notchExpanded else { return }
+        expandNotchMask()
+    }
+
+    private func hoverExited() {
+        if state != .hidden && state != .musicExpanded {
+            scheduleHide()
+        }
+    }
+
+    private func expandNotchMask() {
         guard let screen = NSScreen.main, let p = notchPanel else { return }
         let g = notchGeometry(for: screen)
-
         let hostLayer = notchHost?.layer
         hostLayer?.removeAllAnimations()
         hostLayer?.opacity = 1
@@ -404,27 +406,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let maskLayer = CAShapeLayer()
         let collapsed = notchCollapsedPath(g: g)
         let expanded = notchExpandedPath(g: g)
-
         maskLayer.path = collapsed
         hostLayer?.mask = maskLayer
 
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.4)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1))
-
         let pathAnim = CABasicAnimation(keyPath: "path")
         pathAnim.fromValue = collapsed
         pathAnim.toValue = expanded
         maskLayer.add(pathAnim, forKey: "expandHover")
         maskLayer.path = expanded
-
         CATransaction.commit()
 
         notchExpanded = true
-    }
-
-    @objc private func notchExited() {
-        scheduleHide()
     }
 
     @objc private func notchClicked() {
@@ -504,6 +499,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             musicPanel?.animator().alphaValue = 1
         }
 
+        if let m = musicPanelMonitor { NSEvent.removeMonitor(m) }
         musicPanelMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self = self, let mp = self.musicPanel, mp.isVisible else { return }
             let loc = NSEvent.mouseLocation
@@ -646,24 +642,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 // MARK: - Notch Panel (Dynamic Island style)
 
 class NotchHostView: NSHostingView<NotchPanelView> {
-    var onEntered: (() -> Void)?
-    var onExited: (() -> Void)?
     var onClicked: (() -> Void)?
 
-    override func mouseEntered(with event: NSEvent) { onEntered?() }
-    override func mouseExited(with event: NSEvent) { onExited?() }
     override func mouseDown(with event: NSEvent) { onClicked?() }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        for ta in trackingAreas { removeTrackingArea(ta) }
-        let ta = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self, userInfo: nil
-        )
-        addTrackingArea(ta)
-    }
 }
 
 struct NotchShape: Shape {
