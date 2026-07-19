@@ -7,10 +7,13 @@ final class MediaRemoteHelper: ObservableObject {
     @Published var title = ""
     @Published var artist = ""
     @Published var artwork: NSImage?
+    @Published var elapsed: TimeInterval = 0
+    @Published var duration: TimeInterval = 0
 
     var hasMusic: Bool { isPlaying || !title.isEmpty }
 
     private var timer: Timer?
+    private var positionTimer: Timer?
     private var lastArtKey = ""
     private var helperProcess: Process?
     private var helperOut: FileHandle?
@@ -20,17 +23,14 @@ final class MediaRemoteHelper: ObservableObject {
 
     private init() {}
 
-    private var cacheDir: URL {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("ClipHistoryArt")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
     func startPolling() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             self?.queryAndProcess()
+        }
+        positionTimer?.invalidate()
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.queryPosition()
         }
         startHelper()
     }
@@ -38,6 +38,8 @@ final class MediaRemoteHelper: ObservableObject {
     func stopPolling() {
         timer?.invalidate()
         timer = nil
+        positionTimer?.invalidate()
+        positionTimer = nil
         stopHelper()
     }
 
@@ -146,28 +148,40 @@ final class MediaRemoteHelper: ObservableObject {
         }
     }
 
+    private func queryPosition() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", "tell application \"Spotify\" to get player position"]
+            let outPipe = Pipe()
+            task.standardOutput = outPipe
+            try? task.run()
+            task.waitUntilExit()
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            guard let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let pos = TimeInterval(s) else { return }
+            DispatchQueue.main.async {
+                self?.elapsed = pos
+            }
+        }
+    }
+
     private func processResult(_ json: [String: Any]) {
         let newTitle = json["title"] as? String ?? ""
         let newArtist = json["artist"] as? String ?? ""
         let playing = (json["rate"] as? Double ?? 0) > 0
         let artB64 = json["artworkB64"] as? String
+        let newDuration = json["duration"] as? TimeInterval ?? 0
 
         let artKey = "\(newTitle)|\(newArtist)"
         let trackChanged = (artKey != lastArtKey)
         if trackChanged { lastArtKey = artKey }
 
         var newArtwork: NSImage?
-
-        if playing && trackChanged {
-            newArtwork = loadFromCache(key: artKey)
-            if newArtwork == nil, let b64 = artB64,
-               let data = Data(base64Encoded: b64),
-               let img = NSImage(data: data) {
-                newArtwork = img
-                saveToCache(key: artKey, data: data)
-            }
-        } else if playing {
-            newArtwork = self.artwork
+        if playing, let b64 = artB64,
+           let data = Data(base64Encoded: b64),
+           let img = NSImage(data: data) {
+            newArtwork = img
         }
 
         DispatchQueue.main.async {
@@ -175,7 +189,13 @@ final class MediaRemoteHelper: ObservableObject {
             self.isPlaying = playing
             self.title = newTitle
             self.artist = newArtist
-            if let art = newArtwork { self.artwork = art }
+            self.duration = newDuration
+            if trackChanged { self.elapsed = 0 }
+            if let art = newArtwork {
+                self.artwork = art
+            } else if trackChanged {
+                self.artwork = nil
+            }
             if changed {
                 NotificationCenter.default.post(name: .musicStateChanged, object: nil)
             }
@@ -184,34 +204,26 @@ final class MediaRemoteHelper: ObservableObject {
 
     // MARK: - Commands
 
-    func togglePlayPause() { sendOsascript("tell application \"Spotify\" to playpause") }
-    func previousTrack() { sendOsascript("tell application \"Spotify\" to previous track") }
-    func nextTrack() { sendOsascript("tell application \"Spotify\" to next track") }
+    func togglePlayPause() { sendMRCommand(2) }
+    func previousTrack() { sendMRCommand(5) }
+    func nextTrack() { sendMRCommand(4) }
+    func seekTo(_ position: TimeInterval) {
+        let pos = max(0, position)
+        let userInfo: [String: Any] = ["kMRMediaRemoteOptionPlaybackPosition": pos]
+        sendMRCommand(24, userInfo: userInfo)
+        DispatchQueue.main.async { self.elapsed = pos }
+    }
 
-    private func sendOsascript(_ cmd: String) {
+    private func sendMRCommand(_ command: UInt32, userInfo: [String: Any]? = nil) {
         DispatchQueue.global(qos: .utility).async {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            task.arguments = ["-e", cmd]
-            try? task.run()
+            guard let bundle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW) else { return }
+            typealias F = @convention(c) (UInt32, NSDictionary?) -> Bool
+            guard let ptr = dlsym(bundle, "MRMediaRemoteSendCommand") else { return }
+            let fn = unsafeBitCast(ptr, to: F.self)
+            _ = fn(command, userInfo as NSDictionary?)
         }
     }
 
-    // MARK: - Cache
-
-    private func cacheKey(for key: String) -> URL {
-        let hash = key.data(using: .utf8)?.map { String(format: "%02x", $0) }.joined() ?? "x"
-        return cacheDir.appendingPathComponent(String(hash.prefix(32)) + ".jpg")
-    }
-
-    private func loadFromCache(key: String) -> NSImage? {
-        guard let data = try? Data(contentsOf: cacheKey(for: key)) else { return nil }
-        return NSImage(data: data)
-    }
-
-    private func saveToCache(key: String, data: Data) {
-        try? data.write(to: cacheKey(for: key))
-    }
 }
 
 extension Notification.Name {
