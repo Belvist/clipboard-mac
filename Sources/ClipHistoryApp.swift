@@ -39,6 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var keyMonitor: Any?
     private var clipboardWaveTimer: Timer?
     private var lastToggleTime: Date?
+    private var idleMonitor: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -174,6 +175,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func stateDidChange(from oldState: NotchUIState) {
+        if state == .hidden {
+            installIdleMonitor()
+        } else {
+            removeIdleMonitor()
+        }
+
         switch (oldState, state) {
         case (_, .hidden):
             collapseNotchVisual()
@@ -296,16 +303,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func onMusicChanged() {
         let music = MediaRemoteHelper.shared
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            if music.isPlaying {
-                self.state = .musicPill
-            } else if self.state == .musicExpanded {
-                self.state = .hidden
-            } else if self.state == .musicPill {
-                self.state = .hidden
-            }
+        if music.isPlaying {
+            state = .musicPill
+        } else if state == .musicExpanded {
+            state = .hidden
+        } else if state == .musicPill {
+            state = .hidden
         }
     }
 
@@ -325,7 +328,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1))
         CATransaction.setCompletionBlock { [weak self] in
             guard let self = self, self.state == .hidden else { return }
-            p.alphaValue = 0
+            p.alphaValue = 0.01
             hostLayer?.mask = nil
             hostLayer?.removeAllAnimations()
             hostLayer?.opacity = 1
@@ -359,11 +362,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    private func installIdleMonitor() {
+        idleMonitor?.invalidate()
+        idleMonitor = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            guard let self = self, self.state == .hidden else { return }
+            guard let screen = NSScreen.main else { return }
+            let g = self.notchGeometry(for: screen)
+            let loc = NSEvent.mouseLocation
+            let notchRect = NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH)
+            if notchRect.contains(loc) {
+                self.notchEntered()
+            }
+        }
+    }
+
+    private func removeIdleMonitor() {
+        idleMonitor?.invalidate()
+        idleMonitor = nil
+    }
+
     @objc private func notchEntered() {
         guard panel?.isVisible != true else { return }
         guard !notchExpanded else { return }
-        guard state != .hidden && state != .musicExpanded else { return }
+        guard state != .musicExpanded else { return }
         notchTimer?.invalidate()
+
+        if state == .hidden {
+            state = .clipboardPill
+            return
+        }
 
         guard let screen = NSScreen.main, let p = notchPanel else { return }
         let g = notchGeometry(for: screen)
@@ -413,7 +440,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.toggleWindow()
             }
         case .hidden:
-            break
+            toggleWindow()
         }
     }
 
