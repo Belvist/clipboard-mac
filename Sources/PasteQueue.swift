@@ -6,10 +6,13 @@ class PasteQueue: ObservableObject {
     @Published var isActive = false
     @Published var currentIndex = 0
 
+    private var targetApp: NSRunningApplication?
+
     func enqueue(_ items: [ClipItem]) {
         self.items = items
         self.currentIndex = 0
         self.isActive = true
+        self.targetApp = NSWorkspace.shared.frontmostApplication
         pasteNext()
     }
 
@@ -25,19 +28,31 @@ class PasteQueue: ObservableObject {
         }
         ClipboardManager.shared.syncLastFromPasteboard()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            let src = CGEventSource(stateID: .hidSystemState)
-            let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
-            keyDown?.flags = .maskCommand
-            keyDown?.post(tap: .cghidEventTap)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
-                keyUp?.flags = .maskCommand
-                keyUp?.post(tap: .cghidEventTap)
-                self.currentIndex += 1
-                if self.currentIndex < self.items.count {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.pasteNext() }
-                } else { self.stop() }
+        let app = targetApp
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self, self.isActive else { return }
+            app?.activate(options: .activateIgnoringOtherApps)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self = self, self.isActive else { return }
+                let src = CGEventSource(stateID: .hidSystemState)
+                let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
+                keyDown?.flags = .maskCommand
+                keyDown?.post(tap: .cghidEventTap)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                    guard let self = self, self.isActive else { return }
+                    let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
+                    keyUp?.flags = .maskCommand
+                    keyUp?.post(tap: .cghidEventTap)
+                    self.currentIndex += 1
+                    if self.currentIndex < self.items.count {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                            self?.pasteNext()
+                        }
+                    } else {
+                        self.stop()
+                    }
+                }
             }
         }
     }
@@ -46,5 +61,6 @@ class PasteQueue: ObservableObject {
         isActive = false
         items = []
         currentIndex = 0
+        targetApp = nil
     }
 }

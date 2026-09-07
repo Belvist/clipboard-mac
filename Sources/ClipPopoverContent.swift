@@ -84,7 +84,6 @@ struct ClipPopoverContent: View {
         }
         .onAppear { updater.checkForUpdates() }
         .onChange(of: clipboard.items.count) { _ in listVersion += 1 }
-        .onChange(of: clipboard.items.map { "\($0.id):\($0.pinned)" }) { _ in listVersion += 1 }
     }
 
     // MARK: - Header
@@ -140,7 +139,7 @@ struct ClipPopoverContent: View {
     }
 
     private func tabButton(_ title: String, tag: Int) -> some View {
-        Button(action: { withAnimation(.easeOut(duration: 0.15)) { selectedTab = tag } }) {
+        Button(action: { withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) { selectedTab = tag } }) {
             VStack(spacing: 4) {
                 Text(title)
                     .font(.system(size: 11, weight: selectedTab == tag ? .medium : .regular, design: .default))
@@ -248,7 +247,7 @@ struct ClipPopoverContent: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(filteredItems) { item in
-                            ClipItemRow(itemId: item.id, clipboard: clipboard, copiedId: $copiedId,
+                            ClipItemRow(item: item, clipboard: clipboard, copiedId: $copiedId,
                                        isQueueMode: isQueueMode, queueSelected: $queueSelected, onSelect: onSelect)
                         }
                     }

@@ -80,6 +80,7 @@ struct QuitConfirm: View {
             }.padding(24)
             .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
         }.transition(.opacity)
+        .animation(.easeOut(duration: 0.2), value: show)
     }
 }
 
@@ -186,6 +187,7 @@ struct SettingsOverlay: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
         }.transition(.opacity)
+        .animation(.easeOut(duration: 0.2), value: show)
     }
 }
 

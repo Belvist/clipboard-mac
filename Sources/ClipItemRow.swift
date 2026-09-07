@@ -7,7 +7,7 @@ private let textSecondary = Color(red: 0.5, green: 0.5, blue: 0.5)
 private let textTertiary = Color(red: 0.35, green: 0.35, blue: 0.35)
 
 struct ClipItemRow: View {
-    let itemId: UUID
+    let item: ClipItem
     @ObservedObject var clipboard: ClipboardManager
     @Binding var copiedId: UUID?
     var isQueueMode: Bool
@@ -16,86 +16,82 @@ struct ClipItemRow: View {
     @EnvironmentObject private var lang: L10n
     @State private var isHovered = false
 
-    var item: ClipItem? { clipboard.items.first { $0.id == itemId } }
-
-    var isSelected: Bool { queueSelected.contains(itemId) }
+    var isSelected: Bool { queueSelected.contains(item.id) }
 
     var body: some View {
-        if let item = item {
-            Button(action: { handleTap(item: item) }) {
-                HStack(spacing: 0) {
-                    if isQueueMode {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(isSelected ? textPrimary : textTertiary)
-                            .frame(width: 24)
-                    }
+        Button(action: { handleTap() }) {
+            HStack(spacing: 0) {
+                if isQueueMode {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(isSelected ? textPrimary : textTertiary)
+                        .frame(width: 24)
+                }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            if item.pinned {
-                                Image(systemName: "pin.fill")
-                                    .font(.system(size: 7, weight: .semibold))
-                                    .foregroundColor(.orange)
-                            }
-                            if item.isSensitive {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 7, weight: .semibold))
-                                    .foregroundColor(.red)
-                            }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        if item.pinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 7, weight: .semibold))
+                                .foregroundColor(.orange)
                         }
-                        .opacity(item.pinned || item.isSensitive ? 1 : 0)
-                        .frame(height: item.pinned || item.isSensitive ? nil : 0)
-
-                        if item.contentType == .image, let img = item.nsImage {
-                            imageContent(item: item, img: img)
-                        } else {
-                            textContent(item: item)
+                        if item.isSensitive {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 7, weight: .semibold))
+                                .foregroundColor(.red)
                         }
                     }
+                    .opacity(item.pinned || item.isSensitive ? 1 : 0)
+                    .frame(height: item.pinned || item.isSensitive ? nil : 0)
 
-                    Spacer(minLength: 8)
-
-                    if !isQueueMode {
-                        HStack(spacing: 4) {
-                            if isHovered {
-                                Button(action: { clipboard.togglePin(item) }) {
-                                    Image(systemName: item.pinned ? "pin.slash" : "pin")
-                                        .font(.system(size: 10, weight: .regular))
-                                        .foregroundColor(textTertiary)
-                                }
-                                .buttonStyle(.plain)
-
-                                Button(action: { clipboard.removeItem(item) }) {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 10, weight: .regular))
-                                        .foregroundColor(textTertiary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 9, weight: .regular))
-                                .foregroundColor(textTertiary.opacity(0.5))
-                        }
+                    if item.contentType == .image, let img = item.nsImage {
+                        imageContent(img: img)
+                    } else {
+                        textContent()
                     }
                 }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isHovered ? cardBg : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isHovered ? edgeColor : Color.clear, lineWidth: 0.5)
-                )
+
+                Spacer(minLength: 8)
+
+                if !isQueueMode {
+                    HStack(spacing: 4) {
+                        if isHovered {
+                            Button(action: { clipboard.togglePin(item) }) {
+                                Image(systemName: item.pinned ? "pin.slash" : "pin")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(textTertiary)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(action: { clipboard.removeItem(item) }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .regular))
+                            .foregroundColor(textTertiary.opacity(0.5))
+                    }
+                }
             }
-            .buttonStyle(.plain)
-            .onHover { h in withAnimation(.easeOut(duration: 0.1)) { isHovered = h } }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? cardBg : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isHovered ? edgeColor : Color.clear, lineWidth: 0.5)
+            )
         }
+        .buttonStyle(.plain)
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { isHovered = h } }
     }
 
-    private func handleTap(item: ClipItem) {
+    private func handleTap() {
         if isQueueMode {
             if isSelected { queueSelected.remove(item.id) }
             else { queueSelected.insert(item.id) }
@@ -108,7 +104,7 @@ struct ClipItemRow: View {
         }
     }
 
-    private func textContent(item: ClipItem) -> some View {
+    private func textContent() -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(item.text)
                 .font(.system(size: 12, weight: .regular, design: item.contentType == .code ? .monospaced : .default))
@@ -141,7 +137,7 @@ struct ClipItemRow: View {
         }
     }
 
-    private func imageContent(item: ClipItem, img: NSImage) -> some View {
+    private func imageContent(img: NSImage) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Image(nsImage: img)
                 .resizable()

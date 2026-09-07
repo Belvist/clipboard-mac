@@ -7,7 +7,12 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ClipHistory",
-            path: "Sources"
+            path: "Sources",
+            resources: [
+                .copy("../Resources/Info.plist"),
+                .copy("../Resources/ClipHistory.icns"),
+                .copy("../Assets.xcassets")
+            ]
         )
     ]
 )

@@ -9,13 +9,15 @@
     <key>CFBundleIdentifier</key>
     <string>com.clip.history</string>
     <key>CFBundleVersion</key>
-    <string>1.47</string>
+    <string>1.50</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.47</string>
+    <string>1.50</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>ClipHistory</string>
+    <key>CFBundleIconFile</key>
+    <string>ClipHistory.icns</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSMultipleInstancesProhibited</key>

@@ -115,6 +115,8 @@ class UpdateChecker: ObservableObject {
                 let unzip = Process()
                 unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
                 unzip.arguments = ["-o", zipPath.path, "-d", tempDir.path]
+                unzip.standardOutput = FileHandle.nullDevice
+                unzip.standardError = FileHandle.nullDevice
                 try unzip.run()
                 unzip.waitUntilExit()
 
@@ -174,6 +176,8 @@ class UpdateChecker: ObservableObject {
                     rm -rf "$BACKUP" 2>/dev/null
                 fi
 
+                rm -f /tmp/cliphistory_debug.log 2>/dev/null
+                rm -f /tmp/mr_helper.swift 2>/dev/null
                 rm -rf "\(tempDir.path)" 2>/dev/null
                 open "$DEST" 2>/dev/null
                 """

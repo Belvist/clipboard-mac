@@ -10,6 +10,7 @@ class ClipboardManager: ObservableObject {
     private var lastImageHash: Int = 0
     private var lastPasteboardChangeCount: Int = 0
     private var saveTimer: Timer?
+    private var pollInterval: TimeInterval = 0.5
     let maxItems = 25
 
     var storageURL: URL = {
@@ -23,20 +24,39 @@ class ClipboardManager: ObservableObject {
 
     func startMonitoring() {
         lastPasteboardChangeCount = NSPasteboard.general.changeCount
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.checkClipboard()
-        }
+        schedulePoll(after: pollInterval)
     }
 
     func stopMonitoring() {
         timer?.invalidate()
         timer = nil
+        saveTimer?.invalidate()
+        saveTimer = nil
         save()
+    }
+
+    private func schedulePoll(after interval: TimeInterval) {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            self?.checkClipboard()
+        }
     }
 
     private func checkClipboard() {
         let pb = NSPasteboard.general
-        guard pb.changeCount != lastPasteboardChangeCount else { return }
+        let changed = pb.changeCount != lastPasteboardChangeCount
+
+        if changed {
+            pollInterval = 0.35
+            processPasteboard(pb)
+        } else {
+            pollInterval = min(pollInterval + 0.15, 2.0)
+        }
+
+        schedulePoll(after: pollInterval)
+    }
+
+    private func processPasteboard(_ pb: NSPasteboard) {
         lastPasteboardChangeCount = pb.changeCount
 
         if let image_data = pb.data(forType: .tiff),
@@ -45,68 +65,64 @@ class ClipboardManager: ObservableObject {
             if hash != lastImageHash {
                 lastImageHash = hash
                 lastContent = ""
-                let frontApp = NSWorkspace.shared.frontmostApplication
-                let appName = frontApp?.localizedName ?? "Unknown"
-                let bundleID = frontApp?.bundleIdentifier ?? ""
-                let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
-
-                let pngData: Data?
-                if let tiff = image.tiffRepresentation,
-                   let rep = NSBitmapImageRep(data: tiff),
-                   let png = rep.representation(using: .png, properties: [:]) {
-                    pngData = png
-                } else {
-                    pngData = image_data
-                }
-
-                DispatchQueue.main.async {
-                    let item = ClipItem(
-                        text: "[Image \(Int(image.size.width))x\(Int(image.size.height))]",
-                        sourceApp: appName, sourceBundle: bundleID,
-                        contentType: .image, projectTag: project, imageData: pngData
-                    )
-                    self.items.insert(item, at: 0)
-                    if self.items.count > self.maxItems {
-                        self.items = Array(self.items.prefix(self.maxItems))
-                    }
-                    self.debounceSave()
-                    NSLog("[ClipHistory] posting clipboardUpdated (image)")
-                    NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
-                }
+                ingestImage(image, rawData: image_data)
             }
             return
-        } else {
-            lastImageHash = 0
+        }
+        lastImageHash = 0
+
+        guard let content = pb.string(forType: .string),
+              !content.isEmpty,
+              content != lastContent else { return }
+
+        lastContent = content
+        currentContent = content
+
+        if items.contains(where: { $0.text == content && $0.contentType != .image }) {
+            return
         }
 
-        if let content = pb.string(forType: .string),
-           !content.isEmpty,
-           content != lastContent {
-            lastContent = content
-            currentContent = content
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let appName = frontApp?.localizedName ?? "Unknown"
+        let bundleID = frontApp?.bundleIdentifier ?? ""
+        let detection = SensitiveDetector.detect(content)
+        let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
 
-            if items.contains(where: { $0.text == content && $0.contentType != .image }) {
-                return
-            }
+        DispatchQueue.main.async {
+            let item = ClipItem(
+                text: content, sourceApp: appName, sourceBundle: bundleID,
+                contentType: detection.type, isSensitive: detection.isSensitive, projectTag: project
+            )
+            self.items = ([item] + self.items).prefix(self.maxItems).map { $0 }
+            self.debounceSave()
+            NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
+        }
+    }
 
-            let frontApp = NSWorkspace.shared.frontmostApplication
-            let appName = frontApp?.localizedName ?? "Unknown"
-            let bundleID = frontApp?.bundleIdentifier ?? ""
-            let detection = SensitiveDetector.detect(content)
-            let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
+    private func ingestImage(_ image: NSImage, rawData: Data) {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let appName = frontApp?.localizedName ?? "Unknown"
+        let bundleID = frontApp?.bundleIdentifier ?? ""
+        let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
 
-            DispatchQueue.main.async {
-                let item = ClipItem(
-                    text: content, sourceApp: appName, sourceBundle: bundleID,
-                    contentType: detection.type, isSensitive: detection.isSensitive, projectTag: project
-                )
-                self.items.insert(item, at: 0)
-                if self.items.count > self.maxItems {
-                    self.items = Array(self.items.prefix(self.maxItems))
-                }
-                self.debounceSave()
-                NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
-            }
+        let pngData: Data?
+        if let tiff = image.tiffRepresentation,
+           let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            pngData = png
+        } else {
+            pngData = rawData
+        }
+
+        DispatchQueue.main.async {
+            let item = ClipItem(
+                text: "[Image \(Int(image.size.width))x\(Int(image.size.height))]",
+                sourceApp: appName, sourceBundle: bundleID,
+                contentType: .image, projectTag: project, imageData: pngData
+            )
+            self.items = ([item] + self.items).prefix(self.maxItems).map { $0 }
+            self.debounceSave()
+            NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
         }
     }
 
@@ -140,19 +156,16 @@ class ClipboardManager: ObservableObject {
         updated[idx].pinned.toggle()
         items = updated
         save()
-        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     func removeItem(_ item: ClipItem) {
         items = items.filter { $0.id != item.id }
         save()
-        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     func clearAll() {
         items = items.filter { $0.pinned && $0.contentType != .image }.prefix(maxItems).map { $0 }
         save()
-        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     var projects: [String] {
