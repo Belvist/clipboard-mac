@@ -18,6 +18,9 @@ enum ClipStyle {
     static let secondary = Color(white: 0.56)
     static let tertiary = Color(white: 0.38)
 
+    static let pinAccent = Color(red: 1.0, green: 0.72, blue: 0.20)
+    static let pinBackground = Color(red: 0.16, green: 0.13, blue: 0.06)
+
     static let title = Font.system(size: 15, weight: .semibold)
     static let headline = Font.system(size: 13, weight: .semibold)
     static let body = Font.system(size: 13)

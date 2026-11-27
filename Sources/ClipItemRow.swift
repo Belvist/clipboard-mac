@@ -29,8 +29,13 @@ struct ClipItemRow: View {
                         HStack(spacing: 8) {
                             if item.pinned {
                                 Label("Pinned", systemImage: "pin.fill")
-                                    .font(ClipStyle.caption2)
-                                    .foregroundStyle(ClipStyle.secondary)
+                                    .font(ClipStyle.caption2.weight(.semibold))
+                                    .foregroundStyle(ClipStyle.pinAccent)
+                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(ClipStyle.pinAccent.opacity(0.16))
+                                    )
                             }
                             if item.isSensitive {
                                 Label("Locked", systemImage: "lock.fill")
@@ -77,14 +82,35 @@ struct ClipItemRow: View {
 
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
-            .fill(isCopied ? ClipStyle.elevated : (isHovered ? ClipStyle.rowHover : ClipStyle.grouped.opacity(0.55)))
+            .fill(backgroundFill)
+            .overlay(
+                // Gold accent bar on the left edge for pinned rows.
+                HStack(spacing: 0) {
+                    if item.pinned {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(ClipStyle.pinAccent)
+                            .frame(width: 3)
+                            .padding(.vertical, 6)
+                    }
+                    Spacer()
+                }
+                .padding(.leading, 3)
+            )
+    }
+
+    private var backgroundFill: Color {
+        if item.pinned { return ClipStyle.pinBackground }
+        if isCopied { return ClipStyle.elevated }
+        if isHovered { return ClipStyle.rowHover }
+        return ClipStyle.grouped.opacity(0.55)
     }
 
     private var rowBorder: some View {
         RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
             .strokeBorder(
-                isCopied ? Color.white.opacity(0.2) : (isHovered ? ClipStyle.border : Color.clear),
-                lineWidth: 0.5
+                item.pinned ? ClipStyle.pinAccent.opacity(0.5)
+                    : (isCopied ? Color.white.opacity(0.2) : (isHovered ? ClipStyle.border : Color.clear)),
+                lineWidth: item.pinned ? 1 : 0.5
             )
     }
 
