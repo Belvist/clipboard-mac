@@ -34,7 +34,7 @@ struct ClipItemRow: View {
                                     .padding(.horizontal, 8).padding(.vertical, 4)
                                     .background(
                                         Capsule(style: .continuous)
-                                            .fill(ClipStyle.pinAccent)
+                                            .fill(Color.white)
                                     )
                             }
                             if item.isSensitive {
@@ -59,11 +59,7 @@ struct ClipItemRow: View {
                 if !isQueueMode {
                     HStack(spacing: 2) {
                         if isHovered {
-                            rowAction("pin", filled: item.pinned) {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                    clipboard.togglePin(item)
-                                }
-                            }
+                            rowAction("pin", filled: item.pinned) { clipboard.togglePin(item) }
                             rowAction("trash", filled: false) { clipboard.removeItem(item) }
                         }
                         Image(systemName: "chevron.right")
@@ -88,12 +84,12 @@ struct ClipItemRow: View {
         RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
             .fill(backgroundFill)
             .overlay(
-                // Gold accent bar on the left edge for pinned rows.
+                // White accent bar on the left edge for pinned rows.
                 HStack(spacing: 0) {
                     if item.pinned {
                         RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                            .fill(ClipStyle.pinAccent)
-                            .frame(width: 5)
+                            .fill(Color.white)
+                            .frame(width: 4)
                             .padding(.vertical, 5)
                     }
                     Spacer()
@@ -103,7 +99,6 @@ struct ClipItemRow: View {
     }
 
     private var backgroundFill: Color {
-        if item.pinned { return ClipStyle.pinBackground }
         if isCopied { return ClipStyle.elevated }
         if isHovered { return ClipStyle.rowHover }
         return ClipStyle.grouped.opacity(0.55)
@@ -112,9 +107,8 @@ struct ClipItemRow: View {
     private var rowBorder: some View {
         RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
             .strokeBorder(
-                item.pinned ? ClipStyle.pinAccent.opacity(0.9)
-                    : (isCopied ? Color.white.opacity(0.2) : (isHovered ? ClipStyle.border : Color.clear)),
-                lineWidth: item.pinned ? 1.5 : 0.5
+                isCopied ? Color.white.opacity(0.2) : (isHovered ? ClipStyle.border : Color.clear),
+                lineWidth: 0.5
             )
     }
 
