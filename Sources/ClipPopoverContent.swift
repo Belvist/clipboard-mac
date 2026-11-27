@@ -14,7 +14,6 @@ struct ClipPopoverContent: View {
     @State private var selectedTab = 0
     @State private var queueSelected: Set<UUID> = []
     @State private var isQueueMode = false
-    @State private var listVersion = 0
     @FocusState private var searchFocused: Bool
     var onSelect: (ClipItem) -> Void = { _ in }
     var onDismiss: () -> Void = {}
@@ -68,7 +67,6 @@ struct ClipPopoverContent: View {
             if let err = updater.updateError { UpdateErrorToast(error: err, updater: updater) }
         }
         .onAppear { updater.checkForUpdates() }
-        .onChange(of: clipboard.items.count) { _ in listVersion += 1 }
     }
 
     // MARK: - Header
@@ -249,7 +247,6 @@ struct ClipPopoverContent: View {
                             )
                         }
                     }
-                    .id(listVersion)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                 }
