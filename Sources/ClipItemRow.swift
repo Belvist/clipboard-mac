@@ -1,11 +1,5 @@
 import SwiftUI
 
-private let cardBg = Color(red: 0.08, green: 0.08, blue: 0.08)
-private let edgeColor = Color(red: 0.15, green: 0.15, blue: 0.15)
-private let textPrimary = Color.white
-private let textSecondary = Color(red: 0.5, green: 0.5, blue: 0.5)
-private let textTertiary = Color(red: 0.35, green: 0.35, blue: 0.35)
-
 struct ClipItemRow: View {
     let item: ClipItem
     @ObservedObject var clipboard: ClipboardManager
@@ -16,79 +10,93 @@ struct ClipItemRow: View {
     @EnvironmentObject private var lang: L10n
     @State private var isHovered = false
 
-    var isSelected: Bool { queueSelected.contains(item.id) }
+    private var isSelected: Bool { queueSelected.contains(item.id) }
+    private var isCopied: Bool { copiedId == item.id }
 
     var body: some View {
         Button(action: { handleTap() }) {
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
                 if isQueueMode {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(isSelected ? textPrimary : textTertiary)
-                        .frame(width: 24)
+                        .font(.system(size: 15))
+                        .foregroundStyle(isSelected ? ClipStyle.label : ClipStyle.tertiary)
+                        .frame(width: 22)
+                        .padding(.top, 2)
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        if item.pinned {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 7, weight: .semibold))
-                                .foregroundColor(.orange)
-                        }
-                        if item.isSensitive {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 7, weight: .semibold))
-                                .foregroundColor(.red)
+                VStack(alignment: .leading, spacing: 6) {
+                    if item.pinned || item.isSensitive {
+                        HStack(spacing: 8) {
+                            if item.pinned {
+                                Label("Pinned", systemImage: "pin.fill")
+                                    .font(ClipStyle.caption2)
+                                    .foregroundStyle(ClipStyle.secondary)
+                            }
+                            if item.isSensitive {
+                                Label("Locked", systemImage: "lock.fill")
+                                    .font(ClipStyle.caption2)
+                                    .foregroundStyle(ClipStyle.tertiary)
+                            }
                         }
                     }
-                    .opacity(item.pinned || item.isSensitive ? 1 : 0)
-                    .frame(height: item.pinned || item.isSensitive ? nil : 0)
 
                     if item.contentType == .image, let img = item.nsImage {
                         imageContent(img: img)
                     } else {
                         textContent()
                     }
+
+                    metaRow
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 4)
 
                 if !isQueueMode {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 2) {
                         if isHovered {
-                            Button(action: { clipboard.togglePin(item) }) {
-                                Image(systemName: item.pinned ? "pin.slash" : "pin")
-                                    .font(.system(size: 10, weight: .regular))
-                                    .foregroundColor(textTertiary)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button(action: { clipboard.removeItem(item) }) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .regular))
-                                    .foregroundColor(textTertiary)
-                            }
-                            .buttonStyle(.plain)
+                            rowAction("pin", filled: item.pinned) { clipboard.togglePin(item) }
+                            rowAction("trash", filled: false) { clipboard.removeItem(item) }
                         }
-
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .regular))
-                            .foregroundColor(textTertiary.opacity(0.5))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(ClipStyle.tertiary.opacity(0.45))
                     }
+                    .padding(.top, 2)
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered ? cardBg : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isHovered ? edgeColor : Color.clear, lineWidth: 0.5)
-            )
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(rowBackground)
+            .overlay(rowBorder)
+            .contentShape(RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { isHovered = h } }
+        .onHover { h in
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) { isHovered = h }
+        }
+    }
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
+            .fill(isCopied ? ClipStyle.elevated : (isHovered ? ClipStyle.rowHover : ClipStyle.grouped.opacity(0.55)))
+    }
+
+    private var rowBorder: some View {
+        RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
+            .strokeBorder(
+                isCopied ? Color.white.opacity(0.2) : (isHovered ? ClipStyle.border : Color.clear),
+                lineWidth: 0.5
+            )
+    }
+
+    private func rowAction(_ name: String, filled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: filled ? "\(name).fill" : name)
+                .font(.system(size: 11))
+                .foregroundStyle(ClipStyle.secondary)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(ClipStyle.elevated))
+        }
+        .buttonStyle(.plain)
     }
 
     private func handleTap() {
@@ -105,70 +113,50 @@ struct ClipItemRow: View {
     }
 
     private func textContent() -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(item.text)
-                .font(.system(size: 12, weight: .regular, design: item.contentType == .code ? .monospaced : .default))
-                .foregroundColor(item.isSensitive ? .red.opacity(0.8) : textPrimary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 8) {
-                if !item.sourceApp.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "circle.fill")
-                            .font(.system(size: 4, weight: .regular))
-                        Text(item.sourceApp)
-                            .font(.system(size: 10, weight: .regular, design: .default))
-                    }
-                    .foregroundColor(textTertiary)
-                }
-
-                Text(item.timeAgo)
-                    .font(.system(size: 10, weight: .regular, design: .default))
-                    .foregroundColor(textTertiary.opacity(0.7))
-
-                if item.contentType != .text {
-                    Text(lang.contentTypeLabel(item.contentType))
-                        .font(.system(size: 10, weight: .regular, design: .default))
-                        .foregroundColor(textTertiary.opacity(0.7))
-                }
-            }
-        }
+        Text(item.isSensitive ? String(repeating: "•", count: min(item.text.count, 20)) : item.text)
+            .font(item.contentType == .code || item.contentType == .json ? ClipStyle.callout.monospaced() : ClipStyle.body)
+            .foregroundStyle(item.isSensitive ? ClipStyle.tertiary : ClipStyle.label)
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func imageContent(img: NSImage) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Image(nsImage: img)
-                .resizable()
-                .scaledToFit()
-                .frame(height: 60)
-                .cornerRadius(6)
-                .clipped()
+        Image(nsImage: img)
+            .resizable()
+            .scaledToFit()
+            .frame(maxHeight: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 
-            HStack(spacing: 8) {
-                HStack(spacing: 3) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 8, weight: .regular))
-                    Text("\(Int(img.size.width))x\(Int(img.size.height))")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                }
-                .foregroundColor(textTertiary)
-
-                if !item.sourceApp.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "circle.fill")
-                            .font(.system(size: 4, weight: .regular))
-                        Text(item.sourceApp)
-                            .font(.system(size: 10, weight: .regular, design: .default))
-                    }
-                    .foregroundColor(textTertiary)
-                }
-
-                Text(item.timeAgo)
-                    .font(.system(size: 10, weight: .regular, design: .default))
-                    .foregroundColor(textTertiary.opacity(0.7))
+    private var metaRow: some View {
+        HStack(spacing: 0) {
+            if !item.sourceApp.isEmpty {
+                Text(item.sourceApp)
+                    .font(ClipStyle.caption2)
+                    .foregroundStyle(ClipStyle.tertiary)
+                    .lineLimit(1)
             }
+            if !item.sourceApp.isEmpty && item.contentType != .text {
+                Text(" · ")
+                    .font(ClipStyle.caption2)
+                    .foregroundStyle(ClipStyle.tertiary.opacity(0.5))
+            }
+            if item.contentType != .text {
+                Text(lang.contentTypeLabel(item.contentType))
+                    .font(ClipStyle.caption2)
+                    .foregroundStyle(ClipStyle.tertiary)
+            }
+            if item.contentType == .image, let img = item.nsImage {
+                Text(" · \(Int(img.size.width))×\(Int(img.size.height))")
+                    .font(ClipStyle.mono)
+                    .foregroundStyle(ClipStyle.tertiary)
+            }
+            Spacer(minLength: 8)
+            Text(item.timeAgo)
+                .font(ClipStyle.caption2)
+                .foregroundStyle(ClipStyle.tertiary.opacity(0.75))
+                .monospacedDigit()
         }
     }
 }

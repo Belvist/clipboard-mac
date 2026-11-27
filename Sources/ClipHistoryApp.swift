@@ -16,17 +16,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: NSPanel?
     private var notchPanel: NSPanel?
     private var notchHost: NotchHostView?
+    private var musicPanel: NSPanel?
+    private var musicPanelMonitor: Any?
     private var notchTimer: Timer?
 
     private var notchExpanded = false
-    private var contentExpanded = false
 
     enum NotchUIState: Equatable {
         case hidden
         case clipboardPill
         case clipboardWave
         case musicPill
-        case clipboardOverMusic
+        case musicExpanded
     }
 
     private var state: NotchUIState = .hidden {
@@ -87,7 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func setupNotchPanel() {
-        let host = NotchHostView(rootView: NotchPanelView(mode: .clipboard(count: 0, wave: false, preview: "")))
+        let host = NotchHostView(rootView: NotchPanelView(count: 0))
         host.onClicked = { [weak self] in self?.notchClicked() }
 
         let p = NSPanel(
@@ -122,38 +123,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hasNotch = menuBarH > 30
         let notchW: CGFloat = hasNotch ? screenW * 0.11 : 0
         let contentMargin: CGFloat = 55
-        var pillW = hasNotch ? max(240, notchW + contentMargin * 2) : 200
-
-        if contentExpanded && (state == .musicPill || state == .clipboardOverMusic) {
-            pillW = max(pillW, 380)
-        } else if state == .musicPill || state == .clipboardOverMusic {
-            pillW = max(pillW, 280)
-        }
-
-        let pillH: CGFloat = contentExpanded ? max(menuBarH + 18, 46) : max(menuBarH, 28)
+        let pillW = hasNotch ? max(240, notchW + contentMargin * 2) : 200
+        let pillH = max(menuBarH, 28)
         let pillX = sf.midX - pillW / 2
         let pillY = sf.maxY - pillH
         let notchX = sf.midX - notchW / 2
         return (notchX, notchW, pillX, pillW, pillH, pillY)
-    }
-
-    private func modeForState() -> NotchContentMode {
-        let count = ClipboardManager.shared.items.count
-        let preview = String(ClipboardManager.shared.items.first?.text.prefix(28) ?? "")
-        switch state {
-        case .hidden, .clipboardPill:
-            return .clipboard(count: count, wave: false, preview: preview)
-        case .clipboardWave:
-            return .clipboard(count: count, wave: true, preview: preview)
-        case .musicPill:
-            return .music
-        case .clipboardOverMusic:
-            return .combined(count: count, wave: true, preview: preview)
-        }
-    }
-
-    private func updateNotchView() {
-        notchHost?.rootView = NotchPanelView(mode: modeForState(), expanded: contentExpanded)
     }
 
     private func notchMaskPath(rect: CGRect, notchW: CGFloat, pillH: CGFloat) -> CGPath {
@@ -176,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func notchCollapsedPath(g: (notchX: CGFloat, notchW: CGFloat, pillX: CGFloat, pillW: CGFloat, pillH: CGFloat, pillY: CGFloat)) -> CGPath {
         let centerX = g.pillW / 2
-        let w: CGFloat = g.notchW
+        let w: CGFloat = g.notchW > 0 ? g.notchW : min(90, g.pillW * 0.4)
         let rect = CGRect(x: centerX - w / 2, y: 0, width: w, height: g.pillH)
         return notchMaskPath(rect: rect, notchW: w, pillH: g.pillH)
     }
@@ -194,31 +169,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func stateDidChange(from oldState: NotchUIState) {
-        debugLog("state: \(oldState) -> \(state)")
         switch (oldState, state) {
         case (_, .hidden):
-            debugLog("case: (_, .hidden)")
-            contentExpanded = false
             collapseNotchVisual()
         case (.hidden, .clipboardPill), (.hidden, .clipboardWave):
-            debugLog("case: clipboard show")
-            updateNotchView()
-            showNotch(animated: true)
-        case (.clipboardPill, .clipboardWave), (.clipboardWave, .clipboardPill):
-            debugLog("case: clipboard toggle wave")
-            updateNotchView()
-        case (_, .clipboardOverMusic):
-            debugLog("case: clipboardOverMusic")
-            updateNotchView()
+            updatePillView(clipboardWave: state == .clipboardWave)
+            positionNotchPanel()
             showNotch(animated: true)
         case (.hidden, .musicPill):
-            debugLog("case: (.hidden, .musicPill)")
             showMusicPill()
         case (_, .musicPill):
-            debugLog("case: (_, .musicPill)")
+            hideMusicPanel()
             showMusicPill()
+        case (_, .musicExpanded):
+            showMusicPanel()
+        case (.clipboardWave, .clipboardPill):
+            updatePillView(clipboardWave: false)
         default:
-            debugLog("case: DEFAULT")
             break
         }
         scheduleHideIfNeeded()
@@ -227,10 +194,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showNotch(animated: Bool) {
         guard let screen = NSScreen.main, let p = notchPanel else { return }
         let g = notchGeometry(for: screen)
+        positionNotchPanel()
         notchHost?.layer?.removeAllAnimations()
         notchHost?.layer?.opacity = 1
-        notchHost?.layer?.mask = nil
-        positionNotchPanel()
         if animated {
             animateNotchIn(g: g)
         } else {
@@ -241,35 +207,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showMusicPill() {
-        guard let screen = NSScreen.main, let p = notchPanel else {
-            debugLog("showMusicPill: ABORT screen=\(NSScreen.main != nil) panel=\(notchPanel != nil)")
-            return
-        }
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
         let g = notchGeometry(for: screen)
-        debugLog("showMusicPill: pillX=\(g.pillX) pillY=\(g.pillY) pillW=\(g.pillW) pillH=\(g.pillH)")
-        updateNotchView()
+        notchHost?.rootView = NotchPanelView(count: ClipboardManager.shared.items.count)
         notchHost?.layer?.removeAllAnimations()
         notchHost?.layer?.opacity = 1
-        notchHost?.layer?.mask = nil
         positionNotchPanel()
-        animateNotchExpand(g: g)
-        notchExpanded = true
+        if !notchExpanded {
+            animateNotchExpand(g: g)
+            notchExpanded = true
+        }
         p.alphaValue = 1
         p.orderFrontRegardless()
-        debugLog("showMusicPill DONE: panel frame=\(p.frame) alpha=\(p.alphaValue) visible=\(p.isVisible)")
+    }
+
+    private func updatePillView(clipboardWave: Bool) {
+        notchHost?.rootView = NotchPanelView(count: ClipboardManager.shared.items.count, clipboardWave: clipboardWave)
     }
 
     private func animateNotchIn(g: (notchX: CGFloat, notchW: CGFloat, pillX: CGFloat, pillW: CGFloat, pillH: CGFloat, pillY: CGFloat)) {
         guard let hostLayer = notchHost?.layer else { return }
-        hostLayer.mask = nil
         let maskLayer = CAShapeLayer()
         let collapsed = notchCollapsedPath(g: g)
         let expanded = notchExpandedPath(g: g)
         maskLayer.path = collapsed
         hostLayer.mask = maskLayer
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.35)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setAnimationDuration(0.45)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 0.64))
         let pathAnim = CABasicAnimation(keyPath: "path")
         pathAnim.fromValue = collapsed
         pathAnim.toValue = expanded
@@ -281,15 +246,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func animateNotchExpand(g: (notchX: CGFloat, notchW: CGFloat, pillX: CGFloat, pillW: CGFloat, pillH: CGFloat, pillY: CGFloat)) {
         guard let hostLayer = notchHost?.layer else { return }
-        hostLayer.mask = nil
         let maskLayer = CAShapeLayer()
         let collapsed = notchCollapsedPath(g: g)
         let expanded = notchExpandedPath(g: g)
         maskLayer.path = collapsed
         hostLayer.mask = maskLayer
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.35)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setAnimationDuration(0.4)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1))
         let pathAnim = CABasicAnimation(keyPath: "path")
         pathAnim.fromValue = collapsed
         pathAnim.toValue = expanded
@@ -300,61 +264,62 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func scheduleHideIfNeeded() {
         switch state {
-        case .hidden:
+        case .hidden, .musicExpanded, .clipboardPill:
             break
-        case .clipboardWave, .clipboardOverMusic:
-            break
-        case .clipboardPill:
-            scheduleHide(delay: 6.0)
+        case .clipboardWave:
+            scheduleHide(delay: 4.0)
         case .musicPill:
             if !MediaRemoteHelper.shared.isPlaying {
-                debugLog("scheduleHideIfNeeded: scheduling hide for musicPill (not playing)")
                 scheduleHide(delay: 4.0)
-            } else {
-                debugLog("scheduleHideIfNeeded: musicPill is playing, no hide")
             }
         }
     }
 
     @objc private func onClipboardUpdate() {
-        clipboardWaveTimer?.invalidate()
-        if state == .hidden || state == .clipboardPill || state == .clipboardWave {
-            state = .clipboardWave
-        } else if state == .musicPill || state == .clipboardOverMusic {
-            state = .clipboardOverMusic
+        guard panel?.isVisible != true else { return }
+
+        if state == .musicExpanded {
+            return
         }
+
+        if state == .musicPill && MediaRemoteHelper.shared.isPlaying {
+            updatePillView(clipboardWave: true)
+            positionNotchPanel()
+            return
+        }
+
+        if state == .hidden || state == .clipboardPill {
+            updatePillView(clipboardWave: true)
+            positionNotchPanel()
+            state = .clipboardWave
+        } else if state == .clipboardWave {
+            updatePillView(clipboardWave: true)
+            positionNotchPanel()
+        }
+
+        clipboardWaveTimer?.invalidate()
         clipboardWaveTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            if self.state == .clipboardWave {
-                self.updateNotchView()
-                self.state = .clipboardPill
-            } else if self.state == .clipboardOverMusic {
-                self.updateNotchView()
-            }
+            self?.updatePillView(clipboardWave: false)
+            if self?.state == .clipboardWave { self?.state = .clipboardPill }
         }
     }
 
     @objc private func onMusicChanged() {
         let music = MediaRemoteHelper.shared
-        debugLog("onMusicChanged: isPlaying=\(music.isPlaying) title=\(music.title)")
 
         if music.isPlaying {
-            if state == .clipboardWave || state == .clipboardOverMusic {
-                state = .clipboardOverMusic
-            } else {
-                state = .musicPill
-            }
-        } else {
-            if state == .musicPill {
-                state = .hidden
-            }
+            state = .musicPill
+        } else if state == .musicExpanded {
+            state = .musicPill
+            scheduleHide(delay: 4.0)
+        } else if state == .musicPill {
+            scheduleHide(delay: 4.0)
         }
     }
 
     private func collapseNotchVisual() {
-        debugLog("collapseNotchVisual called")
         notchExpanded = false
-        guard let screen = NSScreen.main, let _ = notchPanel else { return }
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
         let g = notchGeometry(for: screen)
 
         let hostLayer = notchHost?.layer
@@ -364,14 +329,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let expanded = notchExpandedPath(g: g)
 
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.25)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeIn))
+        CATransaction.setAnimationDuration(0.3)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1))
         CATransaction.setCompletionBlock { [weak self] in
-            guard let self = self else { return }
-            self.notchHost?.layer?.mask = nil
-            self.notchHost?.layer?.removeAllAnimations()
-            self.notchHost?.layer?.opacity = 0
-            self.notchPanel?.alphaValue = 0
+            guard let self = self, self.state == .hidden else { return }
+            hostLayer?.mask = nil
+            hostLayer?.removeAllAnimations()
+            hostLayer?.opacity = 0
+            p.alphaValue = 0
         }
 
         if let mask = maskLayer {
@@ -390,9 +355,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func scheduleHide(delay: TimeInterval = 10.0) {
-        debugLog("scheduleHide: delay=\(delay) state=\(state)")
         notchTimer?.invalidate()
-        guard state != .hidden else { return }
+        guard state != .hidden, state != .musicExpanded else { return }
         notchTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             self?.state = .hidden
         }
@@ -401,23 +365,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func startHoverMonitor() {
         hoverMonitor?.invalidate()
         hoverInside = false
-        hoverMonitor = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            self?.checkHoverIfNeeded()
+        hoverMonitor = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            self?.checkHover()
         }
-    }
-
-    private func checkHoverIfNeeded() {
-        guard let screen = NSScreen.main else { return }
-        let loc = NSEvent.mouseLocation
-        let nearTop = loc.y >= screen.frame.maxY - 50
-        let active = state != .hidden
-        let panelOpen = panel?.isVisible == true
-        guard nearTop || active || panelOpen else { return }
-        checkHover()
     }
 
     private func checkHover() {
         guard let screen = NSScreen.main else { return }
+        guard state != .musicExpanded else {
+            hoverInside = false
+            return
+        }
 
         let g = notchGeometry(for: screen)
         let loc = NSEvent.mouseLocation
@@ -438,35 +396,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         notchTimer?.invalidate()
 
         if state == .hidden {
+            updatePillView(clipboardWave: false)
+            positionNotchPanel()
             state = .clipboardPill
             return
         }
 
-        if state == .musicPill || state == .clipboardOverMusic {
-            contentExpanded = true
-            updateNotchView()
-            positionNotchPanel()
-            expandNotchMask()
-            return
-        }
-
-        guard notchPanel?.alphaValue != 1 else { return }
+        guard !notchExpanded else { return }
         expandNotchMask()
     }
 
     private func hoverExited() {
-        if contentExpanded {
-            contentExpanded = false
-            updateNotchView()
-            positionNotchPanel()
-        }
-
-        if state == .clipboardWave {
-            return
-        } else if state == .musicPill {
-            if !MediaRemoteHelper.shared.isPlaying {
-                scheduleHide()
-            }
+        if state != .hidden && state != .musicExpanded {
+            scheduleHide()
         }
     }
 
@@ -476,7 +418,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hostLayer = notchHost?.layer
         hostLayer?.removeAllAnimations()
         hostLayer?.opacity = 1
-        hostLayer?.mask = nil
         p.alphaValue = 1
         p.orderFrontRegardless()
 
@@ -487,8 +428,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         hostLayer?.mask = maskLayer
 
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.35)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setAnimationDuration(0.4)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.34, 1.45, 0.64, 1))
         let pathAnim = CABasicAnimation(keyPath: "path")
         pathAnim.fromValue = collapsed
         pathAnim.toValue = expanded
@@ -502,15 +443,91 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func notchClicked() {
         notchTimer?.invalidate()
         switch state {
-        case .clipboardPill, .clipboardWave, .clipboardOverMusic:
+        case .musicPill:
+            state = .musicExpanded
+        case .musicExpanded:
+            state = .musicPill
+        case .clipboardPill, .clipboardWave:
             state = .hidden
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 self?.toggleWindow()
             }
-        case .musicPill:
-            state = .hidden
         case .hidden:
             toggleWindow()
+        }
+    }
+
+    private func hideMusicPanel() {
+        musicPanel?.orderOut(nil)
+        musicPanelMonitor.map { NSEvent.removeMonitor($0) }
+        musicPanelMonitor = nil
+        guard let screen = NSScreen.main, let p = notchPanel else { return }
+        let g = notchGeometry(for: screen)
+        notchHost?.rootView = NotchPanelView(count: ClipboardManager.shared.items.count)
+        p.setFrame(NSRect(x: g.pillX, y: g.pillY, width: g.pillW, height: g.pillH), display: true)
+        notchHost?.frame = NSRect(x: 0, y: 0, width: g.pillW, height: g.pillH)
+    }
+
+    private func showMusicPanel() {
+        guard let screen = NSScreen.main else { return }
+        let g = notchGeometry(for: screen)
+
+        let musicView = ExpandedMusicView(onClose: { [weak self] in
+            self?.state = .musicPill
+        })
+        let hosting = NSHostingController(rootView: musicView)
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.cornerRadius = 14
+        hosting.view.layer?.masksToBounds = true
+        hosting.view.layer?.backgroundColor = NSColor.black.cgColor
+
+        if musicPanel == nil {
+            let mp = NSPanel(
+                contentRect: NSRect(x: 0, y: 0, width: 300, height: 140),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            mp.level = .screenSaver
+            mp.isOpaque = false
+            mp.backgroundColor = .clear
+            mp.hidesOnDeactivate = false
+            mp.isMovableByWindowBackground = false
+            mp.isReleasedWhenClosed = false
+            mp.hasShadow = false
+            mp.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            mp.contentViewController = hosting
+            musicPanel = mp
+        } else {
+            musicPanel?.contentViewController = hosting
+        }
+
+        let panelW: CGFloat = g.pillW
+        let panelH: CGFloat = 120
+        let panelX = g.pillX
+        let panelY = g.pillY - panelH - 4
+
+        musicPanel?.setFrame(NSRect(x: panelX, y: panelY, width: panelW, height: panelH), display: true)
+        musicPanel?.alphaValue = 0
+        musicPanel?.orderFrontRegardless()
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            musicPanel?.animator().alphaValue = 1
+        }
+
+        if let m = musicPanelMonitor { NSEvent.removeMonitor(m) }
+        musicPanelMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self = self, let mp = self.musicPanel, mp.isVisible else { return }
+            let loc = NSEvent.mouseLocation
+            let notchVisible = self.notchPanel?.frame.contains(loc) ?? false
+            let panelVisible = mp.frame.contains(loc)
+            if !notchVisible && !panelVisible {
+                DispatchQueue.main.async {
+                    self.state = .musicPill
+                }
+            }
         }
     }
 
@@ -640,3 +657,217 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 }
 
+// MARK: - Notch Panel (Dynamic Island style)
+
+class NotchHostView: NSHostingView<NotchPanelView> {
+    var onClicked: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) { onClicked?() }
+}
+
+struct NotchShape: Shape {
+    var cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(cornerRadius, rect.height / 2, rect.width / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY),
+                      control: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - r),
+                      control: CGPoint(x: rect.minX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+struct NotchPanelView: View {
+    var count: Int = 0
+    var clipboardWave: Bool = false
+    @ObservedObject private var music = MediaRemoteHelper.shared
+
+    var body: some View {
+        ZStack {
+            HStack {
+                if music.hasMusic, let art = music.artwork {
+                    Image(nsImage: art)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 25, height: 22)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .padding(.leading, 10)
+                } else {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.leading, 16)
+                }
+                Spacer()
+            }
+
+            HStack {
+                Spacer()
+                if count > 0, clipboardWave {
+                    WaveformBars(isPlaying: true, seed: "\(count)")
+                        .padding(.trailing, 10)
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                            .frame(width: 18, height: 18)
+                        Text("\(count)")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.trailing, 14)
+                } else if music.isPlaying {
+                    WaveformBars(isPlaying: true, seed: music.title)
+                        .padding(.trailing, 14)
+                } else if count > 0 {
+                    WaveformBars(isPlaying: true, seed: "\(count)")
+                        .padding(.trailing, 10)
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                            .frame(width: 18, height: 18)
+                        Text("\(count)")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.trailing, 14)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(NotchShape(cornerRadius: 14).fill(Color.black))
+        .clipShape(NotchShape(cornerRadius: 14))
+    }
+}
+
+struct ExpandedMusicView: View {
+    @ObservedObject private var music = MediaRemoteHelper.shared
+    var onClose: (() -> Void)?
+    @State private var isDragging = false
+    @State private var dragProgress: Double = 0
+
+    private var displayProgress: Double {
+        if isDragging { return dragProgress }
+        guard music.duration > 0 else { return 0 }
+        return min(music.elapsed / music.duration, 1.0)
+    }
+
+    private func formatTime(_ t: TimeInterval) -> String {
+        guard t.isFinite, t >= 0 else { return "0:00" }
+        let m = Int(t) / 60
+        let s = Int(t) % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                if let art = music.artwork {
+                    Image(nsImage: art)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 52, height: 52)
+                        .overlay(
+                            Image(systemName: "music.note")
+                                .foregroundColor(.white.opacity(0.3))
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(music.title.isEmpty ? "Not Playing" : music.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Text(music.artist.isEmpty ? "—" : music.artist)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(height: 3)
+                    Capsule()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: geo.size.width * displayProgress, height: 3)
+                }
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                        .onChanged { value in
+                            isDragging = true
+                            let pct = max(0, min(1, value.location.x / geo.size.width))
+                            dragProgress = pct
+                        }
+                        .onEnded { value in
+                            let pct = max(0, min(1, value.location.x / geo.size.width))
+                            let target = pct * music.duration
+                            music.seekTo(target)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isDragging = false
+                            }
+                        }
+                )
+            }
+            .frame(height: 20)
+            .padding(.top, 8)
+
+            HStack {
+                Text(formatTime(music.elapsed))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text("-\(formatTime(max(0, music.duration - music.elapsed)))")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+
+            HStack(spacing: 28) {
+                Button(action: { music.previousTrack() }) {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: { music.togglePlayPause() }) {
+                    Image(systemName: music.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: { music.nextTrack() }) {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}

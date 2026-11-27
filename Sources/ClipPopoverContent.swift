@@ -1,14 +1,6 @@
 import SwiftUI
 import ServiceManagement
 
-private let bg = Color(red: 0.04, green: 0.04, blue: 0.04)
-private let cardBg = Color(red: 0.08, green: 0.08, blue: 0.08)
-private let edgeColor = Color(red: 0.15, green: 0.15, blue: 0.15)
-private let edgeColorLight = Color(red: 0.2, green: 0.2, blue: 0.2)
-private let textPrimary = Color.white
-private let textSecondary = Color(red: 0.5, green: 0.5, blue: 0.5)
-private let textTertiary = Color(red: 0.35, green: 0.35, blue: 0.35)
-
 struct ClipPopoverContent: View {
     @StateObject private var clipboard = ClipboardManager.shared
     @StateObject private var pasteQueue = PasteQueue.shared
@@ -23,20 +15,13 @@ struct ClipPopoverContent: View {
     @State private var queueSelected: Set<UUID> = []
     @State private var isQueueMode = false
     @State private var listVersion = 0
+    @FocusState private var searchFocused: Bool
     var onSelect: (ClipItem) -> Void = { _ in }
     var onDismiss: () -> Void = {}
 
     init(onSelect: @escaping (ClipItem) -> Void = { _ in }, onDismiss: @escaping () -> Void = {}) {
         self._clipboard = StateObject(wrappedValue: ClipboardManager.shared)
         self._pasteQueue = StateObject(wrappedValue: PasteQueue.shared)
-        self._searchText = State(initialValue: "")
-        self._copiedId = State(initialValue: nil)
-        self._showQuitConfirm = State(initialValue: false)
-        self._showSettings = State(initialValue: false)
-        self._selectedProject = State(initialValue: "All")
-        self._selectedTab = State(initialValue: 0)
-        self._queueSelected = State(initialValue: [])
-        self._isQueueMode = State(initialValue: false)
         self.onSelect = onSelect
         self.onDismiss = onDismiss
     }
@@ -62,19 +47,19 @@ struct ClipPopoverContent: View {
         ZStack {
             VStack(spacing: 0) {
                 header
+                ClipSeparator().padding(.horizontal, 16)
                 tabBar
                 searchBar
                 projectFilter
                 itemsList
                 if isQueueMode { queueBar }
+                ClipSeparator()
                 footer
             }
-            .frame(width: 380, height: 500)
-            .background(bg, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(edgeColor, lineWidth: 0.5)
-            )
+            .frame(width: ClipStyle.panelWidth, height: ClipStyle.panelHeight)
+            .background(ClipPanelBackground())
+            .clipShape(RoundedRectangle(cornerRadius: ClipStyle.windowRadius, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
 
             if copiedId != nil { CopiedToast(copiedId: copiedId) }
             if showQuitConfirm { QuitConfirm(show: $showQuitConfirm) }
@@ -89,66 +74,69 @@ struct ClipPopoverContent: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(textSecondary)
-            Text(lang.tr("clipboard"))
-                .font(.system(size: 13, weight: .medium, design: .default))
-                .foregroundColor(textPrimary)
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(lang.tr("clipboard"))
+                    .font(ClipStyle.title)
+                    .foregroundStyle(ClipStyle.label)
+                Text("\(clipboard.items.count) of \(clipboard.maxItems)")
+                    .font(ClipStyle.caption2)
+                    .foregroundStyle(ClipStyle.tertiary)
+                    .monospacedDigit()
+            }
+
             Spacer()
 
             if updater.hasUpdate {
                 Button(action: { updater.downloadAndUpdate() }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.down.circle").font(.system(size: 9))
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 10))
                         Text("v\(updater.latestVersion)")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .font(ClipStyle.mono)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Color.orange))
+                    .foregroundStyle(ClipStyle.label)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(Capsule(style: .continuous).fill(ClipStyle.elevated))
                 }
                 .buttonStyle(.plain)
             }
 
-            Text("\(clipboard.items.count)/\(clipboard.maxItems)")
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .foregroundColor(textTertiary)
-
-            Button(action: { showSettings = true }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(textTertiary)
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
+            ClipToolbarButton(systemName: "gearshape") { showSettings = true }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 12).padding(.bottom, 8)
+        .padding(.top, 14).padding(.bottom, 12)
     }
 
-    // MARK: - Tab Bar
+    // MARK: - Tabs (segmented)
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
-            tabButton(lang.tr("tab_all"), tag: 0)
-            tabButton(lang.tr("tab_project"), tag: 1)
+        HStack(spacing: 4) {
+            tabSegment(lang.tr("tab_all"), tag: 0)
+            tabSegment(lang.tr("tab_project"), tag: 1)
         }
-        .padding(.horizontal, 16).padding(.bottom, 8)
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: ClipStyle.controlRadius, style: .continuous)
+                .fill(ClipStyle.grouped)
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 12).padding(.bottom, 10)
     }
 
-    private func tabButton(_ title: String, tag: Int) -> some View {
-        Button(action: { withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) { selectedTab = tag } }) {
-            VStack(spacing: 4) {
-                Text(title)
-                    .font(.system(size: 11, weight: selectedTab == tag ? .medium : .regular, design: .default))
-                    .foregroundColor(selectedTab == tag ? textPrimary : textTertiary)
-                Rectangle()
-                    .fill(selectedTab == tag ? textPrimary : Color.clear)
-                    .frame(height: 1)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 6)
+    private func tabSegment(_ title: String, tag: Int) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { selectedTab = tag }
+        } label: {
+            Text(title)
+                .font(ClipStyle.caption.weight(selectedTab == tag ? .semibold : .regular))
+                .foregroundStyle(selectedTab == tag ? ClipStyle.label : ClipStyle.tertiary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(selectedTab == tag ? ClipStyle.elevated : Color.clear)
+                )
         }
         .buttonStyle(.plain)
     }
@@ -158,31 +146,36 @@ struct ClipPopoverContent: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(textTertiary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ClipStyle.tertiary)
             TextField(lang.tr("search_ph"), text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .regular, design: .default))
-                .foregroundColor(textPrimary)
+                .font(ClipStyle.callout)
+                .foregroundStyle(ClipStyle.label)
+                .focused($searchFocused)
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(textTertiary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(ClipStyle.tertiary)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(cardBg, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(edgeColor, lineWidth: 0.5)
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: ClipStyle.controlRadius, style: .continuous)
+                .fill(ClipStyle.grouped)
         )
-        .padding(.horizontal, 16).padding(.bottom, 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: ClipStyle.controlRadius, style: .continuous)
+                .strokeBorder(searchFocused ? ClipStyle.border.opacity(1.6) : ClipStyle.border, lineWidth: 0.5)
+        )
+        .padding(.horizontal, 16).padding(.bottom, 10)
+        .animation(.easeOut(duration: 0.15), value: searchFocused)
     }
 
-    // MARK: - Project Filter
+    // MARK: - Project filter
 
     private var projectFilter: some View {
         Group {
@@ -202,77 +195,83 @@ struct ClipPopoverContent: View {
     }
 
     private func projectChip(_ project: String) -> some View {
-        Button(action: { selectedProject = project }) {
+        Button {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) { selectedProject = project }
+        } label: {
             Text(lang.projectLabel(project))
-                .font(.system(size: 10, weight: .regular, design: .default))
-                .padding(.horizontal, 10).padding(.vertical, 4)
+                .font(ClipStyle.caption2)
+                .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(selectedProject == project ? textPrimary.opacity(0.1) : cardBg)
+                    Capsule(style: .continuous)
+                        .fill(selectedProject == project ? ClipStyle.elevated : ClipStyle.grouped)
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(selectedProject == project ? textPrimary.opacity(0.3) : edgeColor, lineWidth: 0.5)
-                )
-                .foregroundColor(selectedProject == project ? textPrimary : textSecondary)
+                .foregroundStyle(selectedProject == project ? ClipStyle.label : ClipStyle.secondary)
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Items List
+    // MARK: - List
 
     private var itemsList: some View {
         Group {
             if filteredItems.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     Spacer()
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundColor(textTertiary.opacity(0.4))
-                    VStack(spacing: 4) {
-                        Text(lang.tr("empty_title"))
-                            .font(.system(size: 13, weight: .medium, design: .default))
-                            .foregroundColor(textSecondary)
-                        Text(lang.tr("empty_copy"))
-                            .font(.system(size: 11, weight: .regular, design: .default))
-                            .foregroundColor(textTertiary)
-                    }
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundStyle(ClipStyle.tertiary.opacity(0.45))
+                        .symbolRenderingMode(.hierarchical)
+                    Text(lang.tr("empty_title"))
+                        .font(ClipStyle.headline)
+                        .foregroundStyle(ClipStyle.secondary)
+                    Text(lang.tr("empty_copy"))
+                        .font(ClipStyle.caption)
+                        .foregroundStyle(ClipStyle.tertiary)
                     Text(lang.tr("empty_hotkey"))
-                        .font(.system(size: 10, weight: .regular, design: .default))
-                        .foregroundColor(textTertiary.opacity(0.5))
+                        .font(ClipStyle.caption2)
+                        .foregroundStyle(ClipStyle.tertiary.opacity(0.7))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Capsule().fill(ClipStyle.grouped))
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 2) {
+                    LazyVStack(spacing: 6) {
                         ForEach(filteredItems) { item in
-                            ClipItemRow(item: item, clipboard: clipboard, copiedId: $copiedId,
-                                       isQueueMode: isQueueMode, queueSelected: $queueSelected, onSelect: onSelect)
+                            ClipItemRow(
+                                item: item,
+                                clipboard: clipboard,
+                                copiedId: $copiedId,
+                                isQueueMode: isQueueMode,
+                                queueSelected: $queueSelected,
+                                onSelect: onSelect
+                            )
                         }
                     }
                     .id(listVersion)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
                 }
                 .frame(maxHeight: .infinity)
             }
         }
     }
 
-    // MARK: - Queue Bar
+    // MARK: - Queue
 
     private var queueBar: some View {
         HStack {
             Button(action: { isQueueMode = false; queueSelected.removeAll() }) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
-                Text(lang.tr("queue_cancel"))
-                    .font(.system(size: 10, weight: .regular, design: .default))
+                Label(lang.tr("queue_cancel"), systemImage: "xmark")
+                    .font(ClipStyle.caption2)
             }
-            .buttonStyle(.plain).foregroundColor(textTertiary)
+            .buttonStyle(.plain).foregroundStyle(ClipStyle.tertiary)
             Spacer()
             Text("\(queueSelected.count) \(lang.tr("queue_selected"))")
-                .font(.system(size: 10, weight: .regular, design: .default))
-                .foregroundColor(textTertiary)
+                .font(ClipStyle.caption2)
+                .foregroundStyle(ClipStyle.secondary)
+                .monospacedDigit()
             Spacer()
             Button(action: {
                 let items = filteredItems.filter { queueSelected.contains($0.id) }
@@ -281,63 +280,46 @@ struct ClipPopoverContent: View {
                 onDismiss()
                 PasteQueue.shared.enqueue(items)
             }) {
-                Image(systemName: "play.fill").font(.system(size: 9, weight: .medium))
-                Text(lang.tr("queue_paste_all"))
-                    .font(.system(size: 10, weight: .medium, design: .default))
+                Label(lang.tr("queue_paste_all"), systemImage: "play.fill")
+                    .font(ClipStyle.caption2.weight(.semibold))
             }
             .buttonStyle(.plain)
-            .foregroundColor(queueSelected.isEmpty ? textTertiary : textPrimary)
+            .foregroundStyle(queueSelected.isEmpty ? ClipStyle.tertiary : ClipStyle.label)
             .disabled(queueSelected.isEmpty)
         }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(cardBg)
-        .overlay(
-            Rectangle()
-                .fill(edgeColor)
-                .frame(height: 0.5),
-            alignment: .top
-        )
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(ClipStyle.grouped)
     }
 
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 16) {
-            Button(action: { isQueueMode.toggle(); queueSelected.removeAll() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: isQueueMode ? "xmark" : "list.number")
-                        .font(.system(size: 10, weight: .regular))
-                    Text(isQueueMode ? lang.tr("queue_cancel") : lang.tr("queue"))
-                        .font(.system(size: 10, weight: .regular, design: .default))
-                }
-                .foregroundColor(isQueueMode ? .orange : textTertiary)
-            }
-            .buttonStyle(.plain)
+        HStack(spacing: 18) {
+            footerAction(
+                icon: isQueueMode ? "xmark" : "list.number",
+                title: isQueueMode ? lang.tr("queue_cancel") : lang.tr("queue"),
+                active: isQueueMode
+            ) { isQueueMode.toggle(); queueSelected.removeAll() }
 
-            Button(action: { clipboard.clearAll() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 10, weight: .regular))
-                    Text(lang.tr("clear"))
-                        .font(.system(size: 10, weight: .regular, design: .default))
-                }
-                .foregroundColor(textTertiary)
+            footerAction(icon: "trash", title: lang.tr("clear"), active: false) {
+                clipboard.clearAll()
             }
-            .buttonStyle(.plain)
 
             Spacer()
 
-            Button(action: { showQuitConfirm = true }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "power")
-                        .font(.system(size: 10, weight: .regular))
-                    Text(lang.tr("quit"))
-                        .font(.system(size: 10, weight: .regular, design: .default))
-                }
-                .foregroundColor(textTertiary)
+            footerAction(icon: "power", title: lang.tr("quit"), active: false) {
+                showQuitConfirm = true
             }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.horizontal, 16).padding(.vertical, 11)
+    }
+
+    private func footerAction(icon: String, title: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(ClipStyle.caption2)
+                .foregroundStyle(active ? ClipStyle.label : ClipStyle.tertiary)
+        }
+        .buttonStyle(.plain)
     }
 }

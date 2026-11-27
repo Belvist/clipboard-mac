@@ -14,18 +14,25 @@ struct CopiedToast: View {
             Spacer()
             HStack {
                 Spacer()
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 12))
-                    Text(pasteQueue.isActive ? lang.tr("pasting") : lang.tr("pasted"))
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 20).fill(Color.green).shadow(color: .black.opacity(0.25), radius: 8, y: 4))
+                Label(
+                    pasteQueue.isActive ? lang.tr("pasting") : lang.tr("pasted"),
+                    systemImage: pasteQueue.isActive ? "arrow.triangle.2.circlepath" : "checkmark"
+                )
+                .font(ClipStyle.callout.weight(.semibold))
+                .foregroundStyle(Color(white: 0.08))
+                .padding(.horizontal, 16).padding(.vertical, 9)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color(white: 0.94))
+                        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                )
                 Spacer()
-            }.padding(.bottom, 40)
+            }
+            .padding(.bottom, 40)
         }
-        .allowsHitTesting(false).transition(.opacity).animation(.easeOut(duration: 0.2), value: copiedId)
+        .allowsHitTesting(false)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: copiedId)
     }
 }
 
@@ -39,16 +46,22 @@ struct DownloadOverlay: View {
         ZStack {
             Color.black.opacity(0.4)
             VStack(spacing: 14) {
-                ProgressView()
-                    .scaleEffect(1.2)
+                ProgressView().controlSize(.regular)
                 Text(lang.tr("downloading"))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(ClipStyle.headline)
                 Text("v\(updater.latestVersion)")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundColor(.secondary)
+                    .font(ClipStyle.caption)
+                    .foregroundStyle(ClipStyle.tertiary)
             }
-            .padding(30)
-            .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: ClipStyle.windowRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: ClipStyle.windowRadius, style: .continuous)
+                    .strokeBorder(ClipStyle.border, lineWidth: 0.5)
+            )
         }
     }
 }
@@ -62,23 +75,47 @@ struct QuitConfirm: View {
     var body: some View {
         ZStack {
             Color.black.opacity(0.4).onTapGesture { show = false }
-            VStack(spacing: 14) {
-                Image(systemName: "power").font(.system(size: 24)).foregroundColor(.secondary)
-                Text(lang.tr("quit_title")).font(.system(size: 14, weight: .bold, design: .rounded))
-                HStack(spacing: 12) {
+            VStack(spacing: 16) {
+                Image(systemName: "power")
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(ClipStyle.secondary)
+                Text(lang.tr("quit_title"))
+                    .font(ClipStyle.headline)
+                HStack(spacing: 10) {
                     Button(action: { show = false }) {
-                        Text(lang.tr("cancel")).font(.system(size: 12, weight: .medium, design: .rounded))
-                            .frame(width: 80).padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
-                    }.buttonStyle(.plain)
+                        Text(lang.tr("cancel"))
+                            .font(ClipStyle.callout)
+                            .frame(width: 88).padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(ClipStyle.grouped)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(ClipStyle.secondary)
+
                     Button(action: { NSApplication.shared.terminate(nil) }) {
-                        Text(lang.tr("quit_btn")).font(.system(size: 12, weight: .bold, design: .rounded))
-                            .frame(width: 80).padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.red)).foregroundColor(.white)
-                    }.buttonStyle(.plain)
+                        Text(lang.tr("quit_btn"))
+                            .font(ClipStyle.callout.weight(.semibold))
+                            .frame(width: 88).padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color(white: 0.88))
+                            )
+                            .foregroundStyle(Color(white: 0.08))
+                    }
+                    .buttonStyle(.plain)
                 }
-            }.padding(24)
-            .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: ClipStyle.windowRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: ClipStyle.windowRadius, style: .continuous)
+                    .strokeBorder(ClipStyle.border, lineWidth: 0.5)
+            )
         }.transition(.opacity)
         .animation(.easeOut(duration: 0.2), value: show)
     }
@@ -96,15 +133,14 @@ struct SettingsOverlay: View {
             Color.black.opacity(0.4).onTapGesture { show = false }
             VStack(spacing: 0) {
                 HStack {
-                    Image(systemName: "gearshape").font(.system(size: 12))
-                    Text(lang.tr("settings")).font(.system(size: 14, weight: .bold, design: .rounded))
+                    Text(lang.tr("settings"))
+                        .font(ClipStyle.headline)
                     Spacer()
-                    Button(action: { show = false }) {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundColor(.secondary)
-                    }.buttonStyle(.plain)
-                }.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
+                    ClipToolbarButton(systemName: "xmark") { show = false }
+                }
+                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
 
-                Divider()
+                ClipSeparator().padding(.horizontal, 16)
 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -115,37 +151,37 @@ struct SettingsOverlay: View {
                             )).toggleStyle(.switch).controlSize(.small)
                         }
 
-                        Divider().padding(.horizontal, 16)
+                        Divider().opacity(0.35).padding(.horizontal, 16)
 
                         SettingsRow(title: lang.tr("autopaste"), subtitle: checkAccessibility() ? lang.tr("enabled") : lang.tr("needed"),
-                                    color: checkAccessibility() ? .green : .orange) {
+                                    color: checkAccessibility() ? Color(white: 0.7) : Color(white: 0.45)) {
                             HStack(spacing: 6) {
                                 if checkAccessibility() {
                                     Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green).font(.system(size: 14))
+                                        .foregroundColor(Color(white: 0.75)).font(.system(size: 14))
                                 }
                                 Button(lang.tr("enable")) { requestAccessibility() }
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor))
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.22)))
                                 .foregroundColor(.white)
                                 .buttonStyle(.plain)
                             }
                         }
 
-                        Divider().padding(.horizontal, 16)
+                        Divider().opacity(0.35).padding(.horizontal, 16)
 
                         SettingsRow(title: lang.tr("updates"),
                                     subtitle: updater.isChecking ? lang.tr("checking") :
                                     (updater.hasUpdate ? String(format: lang.tr("available"), updater.latestVersion) : lang.tr("up_to_date")),
-                                    color: updater.isChecking ? .secondary : (updater.hasUpdate ? .orange : .green)) {
+                                    color: updater.isChecking ? .secondary : (updater.hasUpdate ? Color(white: 0.55) : Color(white: 0.7))) {
                             if updater.isChecking {
                                 ProgressView().controlSize(.mini)
                             } else if updater.hasUpdate {
                                 Button(lang.tr("update_btn")) { updater.downloadAndUpdate() }
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor))
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.22)))
                                 .foregroundColor(.white)
                                 .buttonStyle(.plain)
                             } else {
@@ -174,7 +210,7 @@ struct SettingsOverlay: View {
                             .frame(width: 150)
                         }
 
-                        Divider().padding(.horizontal, 16)
+                        Divider().opacity(0.35).padding(.horizontal, 16)
 
                         SettingsRow(title: lang.tr("version"), subtitle: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6") {
                             EmptyView()
@@ -184,8 +220,8 @@ struct SettingsOverlay: View {
                 }
             }
             .frame(width: 340, height: 320)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).shadow(color: .black.opacity(0.3), radius: 20, y: 8))
+            .background(ClipPanelBackground())
+            .clipShape(RoundedRectangle(cornerRadius: ClipStyle.windowRadius, style: .continuous))
         }.transition(.opacity)
         .animation(.easeOut(duration: 0.2), value: show)
     }
@@ -204,15 +240,15 @@ struct UpdateErrorToast: View {
             Spacer()
             HStack {
                 Spacer()
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
-                    Text(errorText)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 20).fill(Color.red).shadow(color: .black.opacity(0.25), radius: 8, y: 4))
+                Label(errorText, systemImage: "exclamationmark.triangle.fill")
+                    .font(ClipStyle.caption.weight(.medium))
+                    .foregroundStyle(ClipStyle.label)
+                    .padding(.horizontal, 16).padding(.vertical, 9)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(ClipStyle.elevated)
+                            .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+                    )
                 Spacer()
             }.padding(.bottom, 40)
         }
@@ -250,9 +286,9 @@ struct SettingsRow<V: View>: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12, weight: .medium, design: .rounded))
-                Text(subtitle).font(.system(size: 10, design: .rounded))
-                    .foregroundColor(color)
+                Text(title).font(ClipStyle.callout.weight(.medium))
+                Text(subtitle).font(ClipStyle.caption2)
+                    .foregroundStyle(color)
             }
             Spacer()
             value()

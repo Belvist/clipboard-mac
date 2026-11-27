@@ -93,7 +93,7 @@ class ClipboardManager: ObservableObject {
                 text: content, sourceApp: appName, sourceBundle: bundleID,
                 contentType: detection.type, isSensitive: detection.isSensitive, projectTag: project
             )
-            self.items = ([item] + self.items).prefix(self.maxItems).map { $0 }
+            self.insertPreservingPins(item)
             self.debounceSave()
             NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
         }
@@ -105,14 +105,7 @@ class ClipboardManager: ObservableObject {
         let bundleID = frontApp?.bundleIdentifier ?? ""
         let project = ProjectDetector.detectProject(app: appName, bundle: bundleID)
 
-        let pngData: Data?
-        if let tiff = image.tiffRepresentation,
-           let rep = NSBitmapImageRep(data: tiff),
-           let png = rep.representation(using: .png, properties: [:]) {
-            pngData = png
-        } else {
-            pngData = rawData
-        }
+        let pngData = Self.optimizedPNG(for: image) ?? rawData
 
         DispatchQueue.main.async {
             let item = ClipItem(
@@ -120,10 +113,45 @@ class ClipboardManager: ObservableObject {
                 sourceApp: appName, sourceBundle: bundleID,
                 contentType: .image, projectTag: project, imageData: pngData
             )
-            self.items = ([item] + self.items).prefix(self.maxItems).map { $0 }
+            self.insertPreservingPins(item)
             self.debounceSave()
             NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
         }
+    }
+
+    /// Downscales large images (max 1600px on the long edge) and re-encodes as PNG
+    /// to keep history.json small. Returns nil if encoding fails.
+    private static func optimizedPNG(for image: NSImage) -> Data? {
+        let maxEdge: CGFloat = 1600
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+
+        let scale = min(1, maxEdge / max(size.width, size.height))
+        let targetSize = NSSize(width: size.width * scale, height: size.height * scale)
+
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(targetSize.width),
+            pixelsHigh: Int(targetSize.height),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        )
+        guard let rep = rep else { return nil }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(origin: .zero, size: targetSize),
+                   from: NSRect(origin: .zero, size: size),
+                   operation: .copy,
+                   fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+
+        return rep.representation(using: .png, properties: [:])
     }
 
     func copyToClipboard(_ item: ClipItem) {
@@ -154,8 +182,14 @@ class ClipboardManager: ObservableObject {
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
         var updated = items
         updated[idx].pinned.toggle()
+        // Keep pinned items at the top, ordered by recency.
+        updated.sort { a, b in
+            if a.pinned != b.pinned { return a.pinned }
+            return a.timestamp > b.timestamp
+        }
         items = updated
         save()
+        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
     }
 
     func removeItem(_ item: ClipItem) {
@@ -164,8 +198,29 @@ class ClipboardManager: ObservableObject {
     }
 
     func clearAll() {
-        items = items.filter { $0.pinned && $0.contentType != .image }.prefix(maxItems).map { $0 }
+        // Keep every pinned item (including pinned images); drop the rest.
+        items = items.filter { $0.pinned }
         save()
+        NotificationCenter.default.post(name: .clipboardUpdated, object: nil)
+    }
+
+    /// Inserts a new item at the top while never evicting pinned items.
+    /// If the list is full, the oldest unpinned item is removed instead.
+    private func insertPreservingPins(_ item: ClipItem) {
+        var next = [item] + items
+        let pinnedCount = next.filter { $0.pinned }.count
+
+        if next.count > maxItems {
+            // How many unpinned slots remain after reserving room for pins.
+            let unpinnedAllowed = max(0, maxItems - pinnedCount)
+            var keptUnpinned = 0
+            next = next.filter { element in
+                if element.pinned { return true }
+                keptUnpinned += 1
+                return keptUnpinned <= unpinnedAllowed
+            }
+        }
+        items = next
     }
 
     var projects: [String] {

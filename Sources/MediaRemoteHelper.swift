@@ -38,9 +38,11 @@ final class MediaRemoteHelper: ObservableObject {
     var hasMusic: Bool { isPlaying || !title.isEmpty }
 
     private var timer: Timer?
+    private var elapsedTimer: Timer?
     private var lastArtKey = ""
     private var lastSync = Date.distantPast
     private var idlePolls = 0
+    private var hasPostedInitialState = false
     private var localElapsedBase: TimeInterval = 0
     private var localElapsedSince = Date()
 
@@ -69,11 +71,20 @@ final class MediaRemoteHelper: ObservableObject {
         timer?.invalidate()
         scheduleNextPoll(interval: 2.0)
         queryNowPlaying()
+
+        // Lightweight 1 Hz ticker so the elapsed clock advances smoothly
+        // without spawning any subprocess. Only updates `elapsed`.
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.tickElapsed()
+        }
     }
 
     func stopPolling() {
         timer?.invalidate()
         timer = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
     }
 
     private func scheduleNextPoll(interval: TimeInterval) {
@@ -152,7 +163,8 @@ final class MediaRemoteHelper: ObservableObject {
                 self.idlePolls = 0
             }
 
-            if changed {
+            if changed || !self.hasPostedInitialState {
+                self.hasPostedInitialState = true
                 debugLog("music: playing=\(playing) \(newTitle)")
                 NotificationCenter.default.post(name: .musicStateChanged, object: nil)
             }

@@ -24,7 +24,6 @@ final class L10n: ObservableObject {
 
         "tab_all":                [.en: "All Items", .ru: "Все записи"],
         "tab_project":            [.en: "By Project", .ru: "По проекту"],
-        "tab_sensitive":          [.en: "Sensitive", .ru: "Конфиденциально"],
 
         "search_ph":              [.en: "Search text, app, project...", .ru: "Поиск по тексту, приложению, проекту..."],
 

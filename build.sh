@@ -29,6 +29,9 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BINARY" "$APP_DIR/Contents/MacOS/ClipHistory"
 cp "Resources/Info.plist" "$APP_DIR/Contents/"
+if [ -f "Resources/ClipHistory.icns" ]; then
+    cp "Resources/ClipHistory.icns" "$APP_DIR/Contents/Resources/"
+fi
 
 echo ""
 echo "Build complete!"
