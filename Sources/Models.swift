@@ -39,7 +39,19 @@ struct ClipItem: Identifiable, Codable, Equatable {
         return NSImage(data: data)
     }
 
-    static func == (lhs: ClipItem, rhs: ClipItem) -> Bool { lhs.id == rhs.id }
+    // Compares every field that affects row rendering (so SwiftUI re-renders
+    // the badge/background when `pinned` etc. change) but deliberately skips
+    // the heavy `imageData` blob to avoid per-render memcmp of large PNGs.
+    // `imageData`, `timestamp`, `sourceApp`, `sourceBundle` never change after
+    // creation, so excluding them is safe.
+    static func == (lhs: ClipItem, rhs: ClipItem) -> Bool {
+        lhs.id == rhs.id
+            && lhs.pinned == rhs.pinned
+            && lhs.isSensitive == rhs.isSensitive
+            && lhs.text == rhs.text
+            && lhs.contentType == rhs.contentType
+            && lhs.projectTag == rhs.projectTag
+    }
 }
 
 enum ContentType: String, Codable {

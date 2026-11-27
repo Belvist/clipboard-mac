@@ -59,7 +59,11 @@ struct ClipItemRow: View {
                 if !isQueueMode {
                     HStack(spacing: 2) {
                         if isHovered {
-                            rowAction("pin", filled: item.pinned) { clipboard.togglePin(item) }
+                            rowAction("pin", filled: item.pinned) {
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                    clipboard.togglePin(item)
+                                }
+                            }
                             rowAction("trash", filled: false) { clipboard.removeItem(item) }
                         }
                         Image(systemName: "chevron.right")
