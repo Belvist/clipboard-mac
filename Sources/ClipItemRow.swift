@@ -28,13 +28,13 @@ struct ClipItemRow: View {
                     if item.pinned || item.isSensitive {
                         HStack(spacing: 8) {
                             if item.pinned {
-                                Label("Pinned", systemImage: "pin.fill")
-                                    .font(ClipStyle.caption2.weight(.semibold))
-                                    .foregroundStyle(ClipStyle.pinAccent)
-                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                Label("Закреплено", systemImage: "pin.fill")
+                                    .font(ClipStyle.caption.weight(.bold))
+                                    .foregroundStyle(Color.black)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
                                     .background(
                                         Capsule(style: .continuous)
-                                            .fill(ClipStyle.pinAccent.opacity(0.16))
+                                            .fill(ClipStyle.pinAccent)
                                     )
                             }
                             if item.isSensitive {
@@ -87,10 +87,10 @@ struct ClipItemRow: View {
                 // Gold accent bar on the left edge for pinned rows.
                 HStack(spacing: 0) {
                     if item.pinned {
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                             .fill(ClipStyle.pinAccent)
-                            .frame(width: 3)
-                            .padding(.vertical, 6)
+                            .frame(width: 5)
+                            .padding(.vertical, 5)
                     }
                     Spacer()
                 }
@@ -108,9 +108,9 @@ struct ClipItemRow: View {
     private var rowBorder: some View {
         RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
             .strokeBorder(
-                item.pinned ? ClipStyle.pinAccent.opacity(0.5)
+                item.pinned ? ClipStyle.pinAccent.opacity(0.9)
                     : (isCopied ? Color.white.opacity(0.2) : (isHovered ? ClipStyle.border : Color.clear)),
-                lineWidth: item.pinned ? 1 : 0.5
+                lineWidth: item.pinned ? 1.5 : 0.5
             )
     }
 
